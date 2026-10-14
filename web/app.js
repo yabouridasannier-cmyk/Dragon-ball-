@@ -18,7 +18,7 @@ const playerOf = (pid) => PLAYERS.find((p) => p.id === pid) || PLAYERS[0];
 const colorOf = (pid) => playerOf(pid).color;
 
 const settings = Object.assign(
-  { profile: 'spectacle', sound: true, calm: matchMedia('(prefers-reduced-motion: reduce)').matches },
+  { profile: 'spectacle', sound: true, music: true, calm: matchMedia('(prefers-reduced-motion: reduce)').matches },
   store.get('iz.settings', {}),
 );
 const saveSettings = () => store.set('iz.settings', settings);
@@ -41,7 +41,9 @@ const audio = (() => {
         for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
       }
       if (ctx.state === 'suspended') ctx.resume();
+      A.musicStart();
     },
+    pause(hidden) { if (ctx) (hidden ? ctx.suspend() : ctx.resume()); },
     ok() { return ctx && settings.sound; },
     tone(freq, dur, { type = 'sine', gain = 0.2, slide = 0, delay = 0 } = {}) {
       if (!A.ok()) return;
@@ -102,6 +104,69 @@ const audio = (() => {
     },
     whirrSet(gain, freq) { if (whirrNode) { const t = ctx.currentTime; whirrNode.g.gain.setTargetAtTime(gain, t, 0.05); whirrNode.f.frequency.setTargetAtTime(freq, t, 0.05); } },
     whirrStop() { if (whirrNode) { try { whirrNode.g.gain.setTargetAtTime(0, ctx.currentTime, 0.05); whirrNode.s.stop(ctx.currentTime + 0.3); } catch { /* ignore */ } whirrNode = null; } },
+
+    /* ── Musique d'ambiance épique, composée pour l'app (aucun extrait de la série) ── */
+    musicBus: null, musicLP: null, musicTimer: null, musicNext: 0, musicStep: 0,
+    musicStart() {
+      if (!ctx || !settings.sound || !settings.music || A.musicTimer) return;
+      if (!A.musicBus) {
+        A.musicLP = ctx.createBiquadFilter(); A.musicLP.type = 'lowpass'; A.musicLP.frequency.value = 18000;
+        A.musicBus = ctx.createGain(); A.musicBus.gain.value = 0.0001;
+        A.musicLP.connect(A.musicBus); A.musicBus.connect(master);
+      }
+      A.musicBus.gain.setTargetAtTime(0.42, ctx.currentTime, 0.4);
+      A.musicNext = ctx.currentTime + 0.12; A.musicStep = 0;
+      A.musicTimer = setInterval(A.musicTick, 25);
+    },
+    musicStop() {
+      clearInterval(A.musicTimer); A.musicTimer = null;
+      if (ctx && A.musicBus) A.musicBus.gain.setTargetAtTime(0.0001, ctx.currentTime, 0.15);
+    },
+    musicDuck(on) { // la musique s'efface pendant le spectacle et revient doucement après la révélation
+      if (!ctx || !A.musicBus || !A.musicTimer) return;
+      const t = ctx.currentTime;
+      A.musicBus.gain.setTargetAtTime(on ? 0.12 : 0.42, t, on ? 0.25 : 0.8);
+      A.musicLP.frequency.setTargetAtTime(on ? 700 : 18000, t, on ? 0.25 : 0.8);
+    },
+    musicTick() {
+      const spb = 60 / 140 / 2; // une croche à 140 battements par minute
+      while (A.musicNext < ctx.currentTime + 0.15) { A.musicNote(A.musicStep, A.musicNext, spb); A.musicNext += spb; A.musicStep = (A.musicStep + 1) % 32; }
+    },
+    musicNote(step, t, spb) {
+      const bar = step >> 3, slot = step & 7, out = A.musicLP;
+      const ROOTS = [45, 41, 48, 43]; // la mineur : La, Fa, Do, Sol
+      const CHORDS = [[57, 60, 64], [53, 57, 60], [60, 64, 67], [55, 59, 62]];
+      const LEAD = [[69, 0, 72, 69, 76, 0, 74, 72], [72, 0, 69, 72, 77, 0, 76, 74], [76, 0, 79, 76, 84, 0, 83, 79], [74, 0, 79, 74, 83, 0, 81, 79]];
+      const mtof = (m) => 440 * 2 ** ((m - 69) / 12);
+      const osc = (f, dur, type, gain, att, lpf, det) => {
+        const o = ctx.createOscillator(), g = ctx.createGain(), l = ctx.createBiquadFilter();
+        o.type = type; o.frequency.value = f; o.detune.value = det || 0; l.type = 'lowpass'; l.frequency.value = lpf;
+        g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(gain, t + att);
+        g.gain.setValueAtTime(gain, t + dur * 0.75); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        o.connect(l); l.connect(g); g.connect(out); o.start(t); o.stop(t + dur + 0.05);
+      };
+      const nz = (dur, gain, freq, type) => {
+        const s = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+        s.buffer = noiseBuf; f.type = type; f.frequency.value = freq;
+        g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        s.connect(f); f.connect(g); g.connect(out); s.start(t, Math.random() * 0.5); s.stop(t + dur + 0.02);
+      };
+      const drum = (f0, f1, dur, gain) => {
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+        g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        o.connect(g); g.connect(out); o.start(t); o.stop(t + dur + 0.02);
+      };
+      if (slot === 0 || slot === 3 || slot === 4) drum(130, 42, 0.22, 0.75);                  // taiko
+      if (slot === 2 || slot === 6) { nz(0.14, 0.32, 1900, 'bandpass'); drum(220, 110, 0.1, 0.25); } // caisse claire
+      if (slot % 2 === 1) nz(0.04, 0.09, 7000, 'highpass');                                    // charleston
+      if (bar === 3 && slot >= 5) drum(200 - (slot - 5) * 28, 80, 0.16, 0.5);                 // roulement de toms
+      if (step === 0) nz(1.1, 0.22, 4500, 'highpass');                                         // cymbale
+      osc(mtof(ROOTS[bar] + (slot % 2 ? 12 : 0)), spb * 0.9, 'sawtooth', 0.15, 0.005, 520);   // basse en croches
+      if (slot === 0) CHORDS[bar].forEach((m) => { osc(mtof(m), spb * 8, 'sawtooth', 0.04, 0.25, 1500, 7); osc(mtof(m), spb * 8, 'sawtooth', 0.04, 0.25, 1500, -7); }); // cuivres
+      const L = LEAD[bar][slot];
+      if (L) { osc(mtof(L), spb * 1.8, 'sawtooth', 0.07, 0.01, 3400, 0); osc(mtof(L), spb * 1.8, 'square', 0.025, 0.01, 2600, 5); } // mélodie héroïque
+    },
   };
   return A;
 })();
@@ -303,7 +368,7 @@ function invoke() {
   state = 'run';
   goBtn.classList.add('busy'); goBtn.disabled = true; chipBtns.forEach((c) => (c.disabled = true));
   clearLive();
-  audio.press(); audio.riser(P.Tcharge); vibrate(15);
+  audio.press(); audio.riser(P.Tcharge); audio.musicDuck(true); vibrate(15);
   oddsEl.textContent = 'Charge…';
 }
 
@@ -409,7 +474,7 @@ function reveal() {
       stage.animate([0, 1, 2, 3, 4, 5, 6, 7].map((i) => ({ translate: `${(Math.random() - 0.5) * 16 * (1 - i / 8)}px ${(Math.random() - 0.5) * 16 * (1 - i / 8)}px` })), { duration: 400 });
       burst(cx, cy, col);
     }
-    audio.fanfare();
+    audio.fanfare(); setTimeout(() => audio.musicDuck(false), settings.calm ? 600 : 1500);
     setTimeout(() => actions.classList.add('in'), settings.calm ? 300 : 1200);
   };
   if (settings.calm) go(); else setTimeout(go, 120);
@@ -420,7 +485,7 @@ function backToIdle() {
   idle = makeIdle(pool, visible); idlePos = 300; clearLive();
   balls.forEach((b) => b.classList.remove('lit')); lockbox.classList.remove('on');
   ptrs.forEach((p) => (p.style.transform = '')); banner.classList.remove('in'); actions.classList.remove('in');
-  overlay.hidden = true; heroWrap.innerHTML = ''; run = null; state = 'idle';
+  overlay.hidden = true; heroWrap.innerHTML = ''; run = null; state = 'idle'; audio.musicDuck(false);
   goBtn.classList.remove('busy'); goBtn.disabled = false; chipBtns.forEach((c) => (c.disabled = false));
   oddsEl.textContent = `1 chance sur ${pool.length}`;
   root.style.setProperty('--accent', player ? player.color : '#FFD24A');
@@ -439,12 +504,13 @@ Object.entries(PROFILES).forEach(([key, P]) => {
   b.addEventListener('click', () => { settings.profile = key; saveSettings(); syncSettings(); });
   $('#profiles').appendChild(b);
 });
-$('#btn-snd').addEventListener('click', () => { settings.sound = !settings.sound; saveSettings(); audio.unlock(); if (!settings.sound) audio.whirrStop(); syncSettings(); });
+$('#btn-snd').addEventListener('click', () => { settings.sound = !settings.sound; saveSettings(); audio.unlock(); if (!settings.sound) { audio.whirrStop(); audio.musicStop(); } else audio.musicStart(); syncSettings(); });
+$('#btn-mus').addEventListener('click', () => { settings.music = !settings.music; saveSettings(); audio.unlock(); if (settings.music) audio.musicStart(); else audio.musicStop(); syncSettings(); });
 $('#btn-calm').addEventListener('click', () => { settings.calm = !settings.calm; saveSettings(); syncSettings(); });
 $('#btn-clear').addEventListener('click', () => { history = []; store.set('iz.history', []); renderHistory(); toast('Historique effacé'); });
 function syncSettings() {
   document.body.classList.toggle('calm', settings.calm);
-  $('#btn-snd').setAttribute('aria-pressed', String(settings.sound));
+  $('#btn-snd').setAttribute('aria-pressed', String(settings.sound)); $('#btn-mus').setAttribute('aria-pressed', String(settings.music));
   $('#btn-calm').setAttribute('aria-pressed', String(settings.calm)); $('#btn-calm').textContent = settings.calm ? 'Activé' : 'Désactivé';
   document.querySelectorAll('#profiles .pill').forEach((b) => b.classList.toggle('on', b.dataset.k === settings.profile));
 }
@@ -483,5 +549,6 @@ function boot() {
   requestAnimationFrame(frame);
 }
 addEventListener('resize', () => { layout(); fxResize(); });
+document.addEventListener('visibilitychange', () => audio.pause(document.hidden));
 boot();
-window.__iz = { state: () => state, invoke, selectPlayer, PLAYERS, settings };
+window.__iz = { state: () => state, invoke, selectPlayer, PLAYERS, settings, audio };
