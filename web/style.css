@@ -222,3 +222,50 @@ body.calm #streaks, body.calm #flash, body.calm #fx { display: none; }
 #shnCap.in { opacity: 1; transform: none; }
 #shnSkip { position: absolute; right: 14px; top: calc(10px + env(safe-area-inset-top)); font-size: .78rem; letter-spacing: .08em; color: rgba(255, 255, 255, .5); opacity: 0; transition: opacity .4s; pointer-events: none; }
 #shnSkip.in { opacity: 1; }
+
+/* Journal des combats */
+.tool { position: relative; }
+#logBadge { position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; display: grid; place-items: center; font: 700 .7rem 'Chakra Petch', sans-serif; background: #FFD24A; color: #3a2600; border: 2px solid #0b1030; }
+#journal { position: fixed; inset: 0; z-index: 91; display: grid; place-items: center; padding: 14px; background: rgba(5, 6, 15, .86); backdrop-filter: blur(6px); animation: fadein .2s ease-out; }
+#journal .sheet { position: relative; width: min(780px, 100%); max-height: min(100%, 860px); display: flex; flex-direction: column; gap: 10px; padding: 14px 14px 12px; border-radius: 20px; background: linear-gradient(180deg, #121a4a, #0a0f30); border: 1.5px solid var(--gold-300); box-shadow: 0 0 40px #ffb32055, inset 0 0 30px #0006; }
+.jhead { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.jhead h2 { font-family: 'Bungee', sans-serif; font-size: clamp(1rem, 4vw, 1.35rem); letter-spacing: .03em; color: #fff3b0; text-shadow: 0 0 12px #ffb32088; }
+#journal .x { width: 34px; height: 34px; border-radius: 50%; font-size: 15px; color: var(--ink-dim); border: 1.5px solid rgba(255, 255, 255, .25); flex: none; }
+.jdecks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.jd { display: flex; flex-direction: column; align-items: center; padding: 6px 4px; border-radius: 12px; border: 1.5px solid color-mix(in srgb, var(--c) 60%, transparent); background: color-mix(in srgb, var(--c) 12%, transparent); }
+.jd b { font-size: .85rem; } .jd .jn { font: 700 1.5rem 'Bungee', sans-serif; line-height: 1.1; } .jd small { color: var(--ink-dim); font-size: .72rem; }
+.jtools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.seg { display: flex; flex-wrap: wrap; gap: 6px; flex: 1 1 auto; }
+.seg button { padding: 5px 10px; border-radius: 999px; border: 1.5px solid rgba(255, 255, 255, .25); font-size: .8rem; white-space: nowrap; }
+.seg button i { font-style: normal; opacity: .7; margin-left: 2px; }
+.seg button[aria-pressed="true"] { background: var(--gold-300); color: #221400; border-color: var(--gold-300); font-weight: 700; }
+#jSearch { flex: 1 1 160px; min-width: 0; padding: 7px 12px; border-radius: 999px; border: 1.5px solid rgba(255, 255, 255, .25); background: rgba(255, 255, 255, .06); color: var(--ink); font: inherit; font-size: .9rem; }
+.jlist { flex: 1 1 auto; min-height: 120px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding-right: 2px; overscroll-behavior: contain; }
+.jsess { position: sticky; top: 0; z-index: 2; padding: 5px 4px; font-weight: 700; font-size: .82rem; color: var(--gold-300); background: #0d1340; border-bottom: 1px solid #ffffff1c; text-transform: capitalize; }
+.jsess small { color: var(--ink-dim); font-weight: 400; text-transform: none; margin-left: 6px; }
+.jr { display: grid; grid-template-columns: 44px 1fr auto; gap: 10px; align-items: center; padding: 6px; border-radius: 12px; background: rgba(255, 255, 255, .045); border: 1px solid transparent; }
+.jr.s-pending { border-color: #FFD24A66; background: #FFD24A10; } .jr.s-void { opacity: .55; }
+.jt { width: 44px; height: 62px; border-radius: 6px; overflow: hidden; border: 2px solid var(--oc); position: relative; background: #111; }
+.jt img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.jt .face { position: absolute; inset: 0; display: grid; place-items: center; font: 11px 'Bungee'; background: linear-gradient(160deg, hsl(var(--h) 75% 48%), hsl(calc(var(--h) + 50) 70% 20%)); }
+.jm { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.jm b { font-size: .95rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jm span { font-size: .78rem; color: var(--ink-dim); } .jm i { font-style: normal; font-weight: 700; } .jm em { color: #9aa0c8; }
+.jst { display: flex; gap: 5px; align-items: center; }
+.jst button { width: 34px; height: 34px; border-radius: 50%; border: 1.5px solid rgba(255, 255, 255, .25); font-size: 14px; line-height: 1; opacity: .75; }
+.jst button[aria-pressed="true"] { opacity: 1; color: #111; font-weight: 700; }
+.jst button[data-s="pending"][aria-pressed="true"] { background: #FFD24A; border-color: #FFD24A; } .jst button[data-s="won"][aria-pressed="true"] { background: #19D38A; border-color: #19D38A; } .jst button[data-s="lost"][aria-pressed="true"] { background: #FF4D5A; border-color: #FF4D5A; }
+.jst .jx { border-color: transparent; font-size: 13px; } .jst .jrest { width: auto; padding: 0 12px; border-radius: 999px; font-size: .8rem; }
+.jempty { padding: 24px 8px; text-align: center; color: var(--ink-dim); }
+.jadd { border: 1px dashed rgba(255, 255, 255, .22); border-radius: 12px; padding: 6px 10px; font-size: .88rem; }
+.jadd summary { cursor: pointer; color: var(--gold-100); }
+.jform { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-top: 8px; align-items: end; }
+.jform label { display: flex; flex-direction: column; gap: 3px; font-size: .78rem; color: var(--ink-dim); }
+.jform select, .jform input { padding: 7px 10px; border-radius: 10px; border: 1.5px solid rgba(255, 255, 255, .25); background: #0e1544; color: var(--ink); font: inherit; font-size: .9rem; min-width: 0; }
+.jform p { grid-column: 1 / -1; min-height: 1.1em; font-size: .8rem; color: var(--gold-100); }
+#jIO { display: flex; flex-direction: column; gap: 6px; } #jText { width: 100%; padding: 8px; border-radius: 10px; border: 1.5px solid rgba(255, 255, 255, .25); background: #0e1544; color: var(--ink); font: .75rem ui-monospace, monospace; }
+.jfoot { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+#jMode { flex: 1 1 200px; font-size: .78rem; color: var(--ink-dim); text-align: right; } #jMode[data-m="cloud"] { color: #5CF0A8; } #jMode[data-m="warn"] { color: #FF8A93; }
+@media (max-width: 520px) { #journal { padding: 0; } #journal .sheet { max-height: 100%; height: 100%; border-radius: 0; } .jr { grid-template-columns: 38px 1fr; } .jst { grid-column: 1 / -1; justify-content: flex-end; } .jt { width: 38px; height: 54px; } #jMode { text-align: left; } }
+@media (max-width: 400px) { .tools { gap: 4px; } }
+body.jopen #toast { bottom: auto; top: 14px; translate: -50% -20px; } body.jopen #toast.in { translate: -50% 0; }

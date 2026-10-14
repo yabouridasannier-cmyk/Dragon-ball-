@@ -2,6 +2,7 @@
 import { PROFILES, randomInt, rand01, position, velocity, vmaxFor, buildPool, buildStrip } from './engine.js';
 import { loadData } from './data.js';
 import { createShenron, scheduleShenronSfx, SHN } from './shenron.js';
+import { createJournal } from './journal.js';
 
 const $ = (s) => document.querySelector(s);
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -18,21 +19,18 @@ const byId = new Map(CARDS.map((c) => [c.id, c]));
 const playerOf = (pid) => PLAYERS.find((p) => p.id === pid) || PLAYERS[0];
 const colorOf = (pid) => playerOf(pid).color;
 
-// Decks : propriétaires d'origine (document) + changements décidés par les combats (gardés dans le navigateur)
-const owners0 = new Map(CARDS.map((c) => [c.id, c.owner]));
-{ const saved = store.get('iz.owners', {}); for (const c of CARDS) if (saved[c.id] && PLAYERS.some((p) => p.id === saved[c.id])) c.owner = saved[c.id]; }
-const saveOwners = () => { const o = {}; for (const c of CARDS) if (c.owner !== owners0.get(c.id)) o[c.id] = c.owner; store.set('iz.owners', o); };
+// Journal des combats : toutes les invocations, pour toujours. Les decks se déduisent du journal (propriétaire d'origine + combats gagnés).
+const journal = createJournal({ cards: CARDS, store, claudeApi: window.claude });
+const originOf = (id) => journal.originOf(id);
+function applyOwners() { const m = journal.ownerMap(); for (const c of CARDS) c.owner = m.get(c.id) || originOf(c.id); }
+applyOwners();
+let history = journal.current(); // tirages de la session en cours (hors annulés), du plus récent au plus ancien
 
 const settings = Object.assign(
   { profile: 'spectacle', sound: true, music: true, intro: true, calm: matchMedia('(prefers-reduced-motion: reduce)').matches },
   store.get('iz.settings', {}),
 );
 const saveSettings = () => store.set('iz.settings', settings);
-// Entrée d'historique : { cardId, playerId (qui tire), from (propriétaire avant le tirage), status: pending | won | lost, ts }
-let history = store.get('iz.history', []).filter((h) => byId.has(h.cardId))
-  .map((h) => ({ ...h, status: h.status || 'lost', from: h.from || owners0.get(h.cardId) })); // tirages d'avant la validation des combats : rien ne change
-const saveHistory = () => store.set('iz.history', history);
-
 /* ───────────────────────── Son (Web Audio, sons de synthèse) ───────────────────────── */
 const audio = (() => {
   let ctx = null, master = null, noiseBuf = null, whirrNode = null;
@@ -339,8 +337,7 @@ PLAYERS.forEach((p) => {
 const chipBtns = [...chipsEl.children];
 
 // Cartes tirables par un joueur : celles des autres, sauf celles « sur la table » (combat pas encore validé)
-const pendingIds = () => new Set(history.filter((h) => h.status === 'pending').map((h) => h.cardId));
-const poolFor = (pid) => { const hold = pendingIds(); return buildPool(CARDS, pid).filter((c) => !hold.has(c.id)); };
+const poolFor = (pid) => { const hold = journal.pendingIds(); return buildPool(CARDS, pid).filter((c) => !hold.has(c.id)); };
 
 function updateDeckCounts() {
   const n = {}; for (const c of CARDS) n[c.owner] = (n[c.owner] || 0) + 1;
@@ -389,12 +386,12 @@ function selectPlayer(p) {
   preload(pool.slice(0, 0).concat(Array.from({ length: 40 }, () => pool[randomInt(pool.length)])));
 }
 
-/* ───────────────────────── Historique et combats ───────────────────────── */
-const STATUS = { pending: ['⚔', 'Combat à jouer'], won: ['✔', 'Gagné'], lost: ['✘', 'Perdu'] };
+/* ───────────────────────── Historique de la session et combats ───────────────────────── */
+const STATUS = { pending: ['⚔', 'Combat à jouer'], won: ['✔', 'Gagné'], lost: ['✘', 'Perdu'], void: ['∅', 'Annulé'] };
 const histHint = $('#histHint');
 function renderHistory() {
   histEl.innerHTML = '';
-  history.slice(0, 16).forEach((h) => {
+  history.slice(0, 30).forEach((h) => {
     const c = byId.get(h.cardId); if (!c) return;
     const b = document.createElement('button'); b.type = 'button'; b.className = 'h ' + h.status;
     b.setAttribute('aria-label', `${c.name} — ${STATUS[h.status][1]}`); b.title = `${c.name} · ${STATUS[h.status][1]}`;
@@ -403,23 +400,9 @@ function renderHistory() {
     b.addEventListener('click', () => openDuel(h));
     histEl.appendChild(b);
   });
-  const k = history.filter((h) => h.status === 'pending').length;
-  histHint.textContent = k ? `⚔ ${k} combat${k > 1 ? 's' : ''} à valider — touche une carte` : history.length ? 'Touche une carte pour modifier son résultat' : '';
-}
-const pushHistory = (entry) => {
-  const c = byId.get(entry.cardId);
-  history.unshift({ status: 'pending', from: c.owner, ...entry });
-  history = history.slice(0, 200); saveHistory(); renderHistory();
-};
-
-// Une carte ne peut être modifiée que tant qu'elle n'a pas été retirée depuis (sinon les propriétaires se mélangent)
-const isLatest = (h) => history.find((x) => x.cardId === h.cardId) === h;
-function resolveDuel(h, status) {
-  const c = byId.get(h.cardId);
-  c.owner = status === 'won' ? h.playerId : h.from; // gagné : deck du joueur qui a tiré ; perdu ou en attente : propriétaire d'origine
-  h.status = status; saveHistory(); saveOwners();
-  renderHistory(); refreshPool();
-  if (state === 'idle') for (const [k, el] of live) if (idle[k]) el.style.setProperty('--oc', colorOf(idle[k].owner));
+  const k = history.filter((h) => h.status === 'pending').length, all = journal.pendingCount();
+  histHint.textContent = k ? `⚔ ${k} combat${k > 1 ? 's' : ''} à valider — touche une carte` : all ? `⚔ ${all} combat${all > 1 ? 's' : ''} en attente dans le journal 📜` : history.length ? 'Touche une carte pour modifier son résultat' : '';
+  const badge = $('#logBadge'); badge.hidden = !all; badge.textContent = all;
 }
 
 const duel = $('#duel'), duelCard = $('#duelCard'), duelWin = $('#duelWin'), duelLose = $('#duelLose'), duelReset = $('#duelReset');
@@ -429,7 +412,7 @@ function openDuel(h) {
   const c = byId.get(h.cardId); if (!c) return;
   audio.unlock(); audio.click();
   duelEntry = h; duelOpener = document.activeElement;
-  const drawer = playerOf(h.playerId), from = playerOf(h.from), live_ = isLatest(h);
+  const drawer = playerOf(h.playerId), from = playerOf(h.from);
   duel.style.setProperty('--oc', colorOf(c.owner));
   duelCard.innerHTML = `<div class="hero" style="--oc:${colorOf(c.owner)};--h:${c.hue}">${faceHTML(c)}</div>`;
   $('#duelTitle').textContent = c.name;
@@ -437,10 +420,8 @@ function openDuel(h) {
   $('#duelState').textContent = h.status === 'pending' ? '⚔ Combat à jouer' : h.status === 'won' ? `✔ Gagné — dans le deck de ${drawer.name}` : `✘ Perdu — restituée à ${from.name}`;
   $('#duelState').dataset.s = h.status;
   duelWin.innerHTML = `🏆 GAGNÉ<small>va chez ${esc(drawer.name)}</small>`; duelLose.innerHTML = `↩ PERDU<small>retourne chez ${esc(from.name)}</small>`;
-  duelWin.disabled = duelLose.disabled = !live_;
   duelWin.setAttribute('aria-pressed', String(h.status === 'won')); duelLose.setAttribute('aria-pressed', String(h.status === 'lost'));
-  duelReset.hidden = !live_ || h.status === 'pending';
-  $('#duelLock').hidden = live_;
+  duelReset.hidden = h.status === 'pending';
   duel.hidden = false; duelWin.focus({ preventScroll: true });
 }
 function closeDuel() {
@@ -449,9 +430,9 @@ function closeDuel() {
   if (duelOpener && duelOpener.isConnected) duelOpener.focus({ preventScroll: true });
 }
 function answerDuel(status) {
-  const h = duelEntry; if (!h || !isLatest(h)) return;
+  const h = duelEntry; if (!h) return;
   const c = byId.get(h.cardId), drawer = playerOf(h.playerId), from = playerOf(h.from);
-  resolveDuel(h, status);
+  journal.setStatus(h.id, status); // le journal prévient l'application (decks, tirage, barre) et sauvegarde
   if (status === 'won') { audio.pick(drawer.stars); toast(`${c.name} rejoint le deck de ${drawer.name} (${CARDS.filter((x) => x.owner === drawer.id).length} cartes)`); }
   else if (status === 'lost') { audio.click(); toast(`${c.name} retourne chez ${from.name}`); }
   else { audio.click(); toast(`${c.name} : combat remis à jouer`); }
@@ -464,6 +445,90 @@ duelLose.addEventListener('click', () => answerDuel('lost'));
 duelReset.addEventListener('click', () => answerDuel('pending'));
 $('#duelClose').addEventListener('click', closeDuel);
 duel.addEventListener('click', (e) => { if (e.target === duel) closeDuel(); });
+
+/* ───────────────────────── Journal des combats (long terme) ───────────────────────── */
+const jEl = $('#journal'), jList = $('#jList'), jDecks = $('#jDecks'), jMode = $('#jMode'), jIO = $('#jIO'), jText = $('#jText');
+const J = { filter: 'all', q: '', shown: 60 };
+const fmtDay = (ts) => new Date(ts).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+const fmtHour = (ts) => new Date(ts).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+function renderJournal() {
+  if (jEl.hidden) return;
+  const n0 = {}, n1 = {}; for (const c of CARDS) { n0[originOf(c.id)] = (n0[originOf(c.id)] || 0) + 1; n1[c.owner] = (n1[c.owner] || 0) + 1; }
+  jDecks.innerHTML = PLAYERS.map((p) => { const d = (n1[p.id] || 0) - (n0[p.id] || 0); return `<div class="jd" style="--c:${p.color}"><b>${esc(p.name)}</b><span class="jn">${n1[p.id] || 0}</span><small>${d ? (d > 0 ? '+' : '') + d + ' vs départ' : 'inchangé'}</small></div>`; }).join('');
+  const all = journal.entries(-1), q = J.q.trim().toLowerCase();
+  const rows = all.filter((e) => (J.filter === 'all' ? e.status !== 'void' : e.status === J.filter) && (!q || (byId.get(e.cardId)?.name || '').toLowerCase().includes(q)));
+  $('#jFilter').querySelectorAll('button').forEach((b) => { b.setAttribute('aria-pressed', String(b.dataset.f === J.filter)); const k = b.dataset.f === 'all' ? all.filter((e) => e.status !== 'void').length : all.filter((e) => e.status === b.dataset.f).length; b.querySelector('i').textContent = k; });
+  let html = '', lastSess = null, shown = 0;
+  const sessCount = new Map(); for (const e of rows) sessCount.set(e.session, (sessCount.get(e.session) || 0) + 1);
+  for (const e of rows) {
+    if (shown >= J.shown) break; shown++;
+    const c = byId.get(e.cardId); if (!c) continue;
+    if (e.session !== lastSess) { lastSess = e.session; html += `<div class="jsess">${esc(fmtDay(e.session))} · ${fmtHour(e.session)} <small>${sessCount.get(e.session)} tirage${sessCount.get(e.session) > 1 ? 's' : ''}</small></div>`; }
+    const dr = playerOf(e.playerId), fr = playerOf(e.from);
+    const img = c.img ? `<img src="${esc(c.img)}" alt="" loading="lazy">` : `<div class="face">${c.id}</div>`;
+    const st = (s, lab) => `<button type="button" data-s="${s}" aria-pressed="${e.status === s}" aria-label="${lab}" title="${lab}">${STATUS[s][0]}</button>`;
+    html += `<div class="jr s-${e.status}" data-id="${esc(e.id)}"><div class="jt" style="--oc:${colorOf(c.owner)};--h:${c.hue}">${img}</div>
+      <div class="jm"><b>${esc(c.name)}</b><span><i style="color:${dr.color}">${esc(dr.name)}</i> ← <i style="color:${fr.color}">${esc(fr.name)}</i> · ${fmtHour(e.ts)}${e.note ? ` · <em>${esc(e.note)}</em>` : ''}</span></div>
+      <div class="jst">${e.status === 'void' ? `<button type="button" data-s="pending" class="jrest">Rétablir</button>` : `${st('pending', 'Combat à jouer')}${st('won', 'Gagné : la carte va chez ' + dr.name)}${st('lost', 'Perdu : la carte reste à ' + fr.name)}<button type="button" data-s="void" class="jx" aria-label="Annuler ce tirage" title="Annuler ce tirage (rétablissable)">🗑</button>`}</div></div>`;
+  }
+  if (!rows.length) html = `<p class="jempty">${all.length ? 'Aucun tirage ne correspond.' : 'Aucun tirage pour le moment. Les invocations apparaîtront ici et resteront gardées.'}</p>`;
+  else if (rows.length > J.shown) html += `<button type="button" id="jMore" class="pill">Voir plus (${rows.length - J.shown})</button>`;
+  jList.innerHTML = html;
+  const info = journal.info();
+  jMode.textContent = info.mode === 'cloud' ? '☁ Sauvegardé en ligne et dans ce navigateur' : info.mode === 'cloud-read' ? '☁ En ligne en lecture seule · sauvegardé dans ce navigateur' : info.storage ? '💾 Sauvegardé dans ce navigateur seulement' : '⚠ Ce navigateur ne garde rien : copie la sauvegarde';
+  jMode.dataset.m = info.mode === 'local' && !info.storage ? 'warn' : info.mode;
+}
+function openJournal() {
+  if (state === 'run' || state === 'intro') return;
+  closeDuel(); audio.unlock(); audio.click();
+  jEl.hidden = false; document.body.classList.add('jopen'); renderJournal(); $('#jClose').focus({ preventScroll: true });
+}
+function closeJournal() { if (jEl.hidden) return; jEl.hidden = true; jIO.hidden = true; document.body.classList.remove('jopen'); $('#btn-log').focus({ preventScroll: true }); }
+$('#btn-log').addEventListener('click', openJournal);
+$('#jClose').addEventListener('click', closeJournal);
+jEl.addEventListener('click', (e) => { if (e.target === jEl) closeJournal(); });
+jList.addEventListener('click', (e) => {
+  if (e.target.id === 'jMore') { J.shown += 60; renderJournal(); return; }
+  const b = e.target.closest('button[data-s]'), row = e.target.closest('.jr'); if (!b || !row) return;
+  const entry = journal.entries().find((x) => x.id === row.dataset.id); if (!entry) return;
+  audio.click(); journal.setStatus(entry.id, b.dataset.s);
+  const c = byId.get(entry.cardId);
+  toast(b.dataset.s === 'void' ? `Tirage de ${c.name} annulé (rétablissable)` : b.dataset.s === 'won' ? `${c.name} → deck de ${playerOf(entry.playerId).name}` : b.dataset.s === 'lost' ? `${c.name} reste à ${playerOf(entry.from).name}` : `${c.name} : combat à jouer`);
+});
+$('#jFilter').addEventListener('click', (e) => { const b = e.target.closest('button[data-f]'); if (!b) return; J.filter = b.dataset.f; J.shown = 60; renderJournal(); });
+$('#jSearch').addEventListener('input', (e) => { J.q = e.target.value; J.shown = 60; renderJournal(); });
+$('#jNewSession').addEventListener('click', () => {
+  const k = journal.pendingCount();
+  if (k && !confirm(`${k} combat${k > 1 ? 's' : ''} pas encore validé${k > 1 ? 's' : ''} resteront en attente dans le journal. Commencer une nouvelle session ?`)) return;
+  journal.newSession(); toast('Nouvelle session : la barre du bas repart à zéro, le journal garde tout');
+});
+// Ajout manuel (pour corriger ou reconstituer un combat)
+const jCards = $('#jCards'); jCards.innerHTML = [...CARDS].sort((a, b) => a.name.localeCompare(b.name, 'fr')).map((c) => `<option value="${esc(c.name)}"></option>`).join('');
+$('#jWho').innerHTML = PLAYERS.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
+$('#jAddBtn').addEventListener('click', () => {
+  const name = $('#jCardQ').value.trim().toLowerCase(), who = $('#jWho').value, res = $('#jRes').value, msg = $('#jAddMsg');
+  const c = CARDS.find((x) => x.name.toLowerCase() === name);
+  if (!c) { msg.textContent = 'Choisis une carte dans la liste proposée.'; return; }
+  if (c.owner === who) { msg.textContent = `${c.name} est déjà dans le deck de ${playerOf(who).name}.`; return; }
+  journal.add({ cardId: c.id, playerId: who, status: res, note: 'ajouté à la main' });
+  msg.textContent = `✔ Ajouté : ${playerOf(who).name} ← ${c.name}`; $('#jCardQ').value = '';
+});
+// Sauvegarde manuelle
+$('#jExport').addEventListener('click', async () => {
+  const text = journal.exportJSON();
+  try { await navigator.clipboard.writeText(text); toast('Sauvegarde copiée : colle-la dans un message ou un fichier'); }
+  catch { jIO.hidden = false; jText.value = text; jText.focus(); jText.select(); $('#jApply').hidden = true; toast('Copie manuelle : le texte est sélectionné'); }
+});
+$('#jImport').addEventListener('click', () => { jIO.hidden = false; jText.value = ''; jText.placeholder = 'Colle ici une sauvegarde copiée plus tôt…'; $('#jApply').hidden = false; jText.focus(); });
+$('#jApply').addEventListener('click', () => {
+  try { const r = journal.importJSON(jText.value); toast(`Sauvegarde restaurée : ${r.added} ajouté${r.added > 1 ? 's' : ''}, ${r.updated} mis à jour${r.bad ? `, ${r.bad} ignoré${r.bad > 1 ? 's' : ''}` : ''}`); jIO.hidden = true; }
+  catch (err) { toast(err.message); }
+});
+// Tout changement du journal (ici, ou venu d'un autre appareil) met à jour decks, tirage, barre et fenêtre
+journal.onChange(() => {
+  applyOwners(); history = journal.current(); renderHistory(); refreshPool(); renderJournal();
+  if (state === 'idle') for (const [k, el] of live) if (idle[k]) el.style.setProperty('--oc', colorOf(idle[k].owner));
+});
 
 /* ───────────────────────── Invocation ───────────────────────── */
 // Durée de l'intro Shenron selon le spectacle choisi (0 = pas d'intro : le mode Éclair reste éclair)
@@ -606,8 +671,7 @@ function reveal() {
   audio.thud(); vibrate([40, 30, 80]);
   const rect = el ? el.getBoundingClientRect() : { left: innerWidth / 2 - cardW / 2, top: innerHeight / 2 - cardH / 2, width: cardW, height: cardH };
   const col = colorOf(w.owner), who = playerOf(w.owner);
-  pushHistory({ cardId: w.id, playerId: player.id, ts: Date.now() });
-  refreshPool(); // la carte tirée est « sur la table » jusqu'au résultat du combat
+  journal.add({ cardId: w.id, playerId: player.id }); // en attente jusqu'au résultat du combat ; le journal met à jour le tirage
   store.set('iz.pending', null);
   const go = () => {
     vignette.style.opacity = 0; streaksEl.style.opacity = 0; stripEl.style.filter = 'none'; machine.style.transform = '';
@@ -652,7 +716,7 @@ function backToIdle() {
 }
 $('#again').addEventListener('click', () => { audio.click(); backToIdle(); });
 $('#undo').addEventListener('click', () => {
-  audio.click(); history.shift(); saveHistory(); renderHistory(); refreshPool(); backToIdle(); toast('Dernier tirage annulé');
+  audio.click(); if (history[0]) journal.setStatus(history[0].id, 'void'); backToIdle(); toast('Dernier tirage annulé (rétablissable dans le journal)');
 });
 goBtn.addEventListener('click', invoke);
 
@@ -668,14 +732,13 @@ $('#btn-snd').addEventListener('click', () => { settings.sound = !settings.sound
 $('#btn-mus').addEventListener('click', () => { settings.music = !settings.music; saveSettings(); audio.unlock(); if (settings.music) audio.musicStart(); else audio.musicStop(); syncSettings(); });
 $('#btn-intro').addEventListener('click', () => { settings.intro = !settings.intro; saveSettings(); syncSettings(); });
 $('#btn-calm').addEventListener('click', () => { settings.calm = !settings.calm; saveSettings(); syncSettings(); });
-$('#btn-clear').addEventListener('click', () => { history = []; saveHistory(); renderHistory(); refreshPool(); toast('Historique effacé (les decks ne changent pas)'); });
+$('#btn-log2').addEventListener('click', () => { panel.hidden = true; openJournal(); });
 let decksT = 0;
 $('#btn-decks').addEventListener('click', (e) => {
   const b = e.currentTarget;
   if (!b.classList.contains('warn')) { b.classList.add('warn'); b.textContent = 'Confirmer ?'; decksT = setTimeout(() => { b.classList.remove('warn'); b.textContent = 'Réinitialiser'; }, 3500); return; }
   clearTimeout(decksT); b.classList.remove('warn'); b.textContent = 'Réinitialiser';
-  for (const c of CARDS) c.owner = owners0.get(c.id);
-  history = []; saveHistory(); saveOwners(); renderHistory(); refreshPool(); toast('Decks remis comme dans le document');
+  const k = journal.voidAll(); toast(k ? `Decks remis comme dans le document : ${k} tirage${k > 1 ? 's' : ''} annulé${k > 1 ? 's' : ''} (rétablissables dans le journal)` : 'Les decks sont déjà ceux du document');
 });
 function syncSettings() {
   document.body.classList.toggle('calm', settings.calm);
@@ -685,6 +748,7 @@ function syncSettings() {
   document.querySelectorAll('#profiles .pill').forEach((b) => b.classList.toggle('on', b.dataset.k === settings.profile));
 }
 addEventListener('keydown', (e) => {
+  if (!jEl.hidden) { if (e.key === 'Escape') closeJournal(); return; }
   if (!duel.hidden) { if (e.key === 'Escape') closeDuel(); return; }
   if (state === 'intro') { if ([' ', 'Enter', 'Escape'].includes(e.key)) skipIntro(); e.preventDefault(); return; }
   if (e.target.closest && e.target.closest('button') && e.key === 'Enter') return;
@@ -715,14 +779,15 @@ function boot() {
   if (demo) $('#demo').hidden = false;
   const pend = store.get('iz.pending', null);
   if (pend && byId.has(pend.cardId)) { // tirage interrompu : le résultat était déjà enregistré, on ne retire pas
-    pushHistory({ cardId: pend.cardId, playerId: pend.playerId, ts: pend.ts }); store.set('iz.pending', null); updateDeckCounts();
+    journal.add({ cardId: pend.cardId, playerId: pend.playerId, ts: pend.ts }); store.set('iz.pending', null);
     toast('Résultat retrouvé après rechargement : ' + byId.get(pend.cardId).name);
   }
   preload(CARDS.slice(0, 0));
+  if (!pend && journal.pendingCount()) toast(`⚔ ${journal.pendingCount()} combat${journal.pendingCount() > 1 ? 's' : ''} en attente : ouvre le journal 📜`);
   requestAnimationFrame(frame);
 }
 addEventListener('resize', () => { layout(); fxResize(); if (intro) shn.resize(); });
 document.addEventListener('visibilitychange', () => audio.pause(document.hidden));
 boot();
-window.__iz = { state: () => state, invoke, selectPlayer, PLAYERS, settings, audio, history: () => history, owners: () => Object.fromEntries(CARDS.map((c) => [c.id, c.owner])), poolSize: () => pool.length,
+window.__iz = { state: () => state, invoke, selectPlayer, PLAYERS, settings, audio, history: () => history, journal, cardName: (id) => byId.get(id).name, owners: () => Object.fromEntries(CARDS.map((c) => [c.id, c.owner])), poolSize: () => pool.length,
   debugShenron: (t, k = 1, calm = false) => { shn.begin({ k, calm }); shnEl.hidden = false; shnEl.classList.add('on'); return shn.frame(t); } };

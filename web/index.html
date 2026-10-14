@@ -23,6 +23,7 @@
     <div class="logo">INVOCATION <b>Z</b></div>
     <nav id="chips" aria-label="Joueur qui invoque"></nav>
     <div class="tools">
+      <button id="btn-log" class="tool" title="Journal des combats" aria-label="Journal des combats">📜<b id="logBadge" hidden></b></button>
       <button id="btn-mus" class="tool" title="Musique" aria-pressed="true">♫</button>
       <button id="btn-snd" class="tool" title="Sons" aria-pressed="true">♪</button>
       <button id="btn-gear" class="tool" title="Réglages">⚙</button>
@@ -33,7 +34,7 @@
     <div class="row"><span>Durée du spectacle</span><div id="profiles"></div></div>
     <div class="row"><span>Intro Shenron</span><button id="btn-intro" class="pill" aria-pressed="true">Activée</button></div>
     <div class="row"><span>Mode calme</span><button id="btn-calm" class="pill" aria-pressed="false">Désactivé</button></div>
-    <div class="row"><span>Historique</span><button id="btn-clear" class="pill">Effacer</button></div>
+    <div class="row"><span>Journal des combats</span><button id="btn-log2" class="pill">Ouvrir</button></div>
     <div class="row"><span>Decks (propriétaires)</span><button id="btn-decks" class="pill">Réinitialiser</button></div>
   </div>
 
@@ -80,6 +81,42 @@
   <div id="shnSkip">Touche pour passer</div>
 </div>
 
+<div id="journal" hidden role="dialog" aria-modal="true" aria-labelledby="jTitle">
+  <div class="sheet">
+    <div class="jhead"><h2 id="jTitle">📜 Journal des combats</h2><button id="jClose" class="x" aria-label="Fermer">✕</button></div>
+    <div id="jDecks" class="jdecks"></div>
+    <div class="jtools">
+      <div id="jFilter" class="seg" role="group" aria-label="Filtrer par résultat">
+        <button type="button" data-f="all" aria-pressed="true">Tous <i></i></button>
+        <button type="button" data-f="pending" aria-pressed="false">⚔ À jouer <i></i></button>
+        <button type="button" data-f="won" aria-pressed="false">✔ Gagnés <i></i></button>
+        <button type="button" data-f="lost" aria-pressed="false">✘ Perdus <i></i></button>
+        <button type="button" data-f="void" aria-pressed="false">∅ Annulés <i></i></button>
+      </div>
+      <input id="jSearch" type="search" placeholder="Chercher une carte…" aria-label="Chercher une carte" autocomplete="off">
+    </div>
+    <div id="jList" class="jlist"></div>
+    <details id="jAdd" class="jadd">
+      <summary>➕ Ajouter ou corriger un combat à la main</summary>
+      <div class="jform">
+        <label>Qui a tiré <select id="jWho"></select></label>
+        <label>Carte <input id="jCardQ" list="jCards" placeholder="Nom de la carte" autocomplete="off"></label>
+        <datalist id="jCards"></datalist>
+        <label>Résultat <select id="jRes"><option value="won">Gagné</option><option value="lost">Perdu</option><option value="pending">À jouer</option></select></label>
+        <button id="jAddBtn" type="button" class="pill">Ajouter</button>
+        <p id="jAddMsg" aria-live="polite"></p>
+      </div>
+    </details>
+    <div id="jIO" hidden><textarea id="jText" rows="5" spellcheck="false" aria-label="Sauvegarde du journal"></textarea><button id="jApply" type="button" class="pill">Restaurer</button></div>
+    <div class="jfoot">
+      <button id="jNewSession" type="button" class="pill">Nouvelle session</button>
+      <button id="jExport" type="button" class="pill">Copier la sauvegarde</button>
+      <button id="jImport" type="button" class="pill">Restaurer…</button>
+      <span id="jMode"></span>
+    </div>
+  </div>
+</div>
+
 <div id="duel" hidden role="dialog" aria-modal="true" aria-labelledby="duelTitle">
   <div class="box">
     <button id="duelClose" class="x" aria-label="Fermer">✕</button>
@@ -92,7 +129,6 @@
       <button id="duelLose" class="cta lose"></button>
     </div>
     <button id="duelReset" class="ghost" hidden>Remettre le combat à jouer</button>
-    <p id="duelLock" hidden>Cette carte a été tirée de nouveau depuis : son résultat est figé.</p>
   </div>
 </div>
 
