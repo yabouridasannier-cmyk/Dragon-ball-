@@ -31,6 +31,7 @@
 
   <div id="panel" hidden>
     <div class="row"><span>Durée du spectacle</span><div id="profiles"></div></div>
+    <div class="row"><span>Intro Shenron</span><button id="btn-intro" class="pill" aria-pressed="true">Activée</button></div>
     <div class="row"><span>Mode calme</span><button id="btn-calm" class="pill" aria-pressed="false">Désactivé</button></div>
     <div class="row"><span>Historique</span><button id="btn-clear" class="pill">Effacer</button></div>
     <div class="row"><span>Decks (propriétaires)</span><button id="btn-decks" class="pill">Réinitialiser</button></div>
@@ -71,6 +72,12 @@
   <div id="heroWrap"></div>
   <div id="banner"><div class="nm" id="bnName"></div><div class="ow" id="bnOwner"></div></div>
   <div id="actions"><button id="again" class="cta">Nouvelle invocation</button><button id="undo" class="ghost">Annuler ce tirage</button></div>
+</div>
+
+<div id="shenron" hidden aria-hidden="true">
+  <canvas id="shn"></canvas>
+  <div id="shnCap"></div>
+  <div id="shnSkip">Touche pour passer</div>
 </div>
 
 <div id="duel" hidden role="dialog" aria-modal="true" aria-labelledby="duelTitle">

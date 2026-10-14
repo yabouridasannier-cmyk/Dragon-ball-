@@ -1,6 +1,7 @@
 // app.js — Invocation Z, version 0 : interface, animation, son.
 import { PROFILES, randomInt, rand01, position, velocity, vmaxFor, buildPool, buildStrip } from './engine.js';
 import { loadData } from './data.js';
+import { createShenron, scheduleShenronSfx, SHN } from './shenron.js';
 
 const $ = (s) => document.querySelector(s);
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -23,7 +24,7 @@ const owners0 = new Map(CARDS.map((c) => [c.id, c.owner]));
 const saveOwners = () => { const o = {}; for (const c of CARDS) if (c.owner !== owners0.get(c.id)) o[c.id] = c.owner; store.set('iz.owners', o); };
 
 const settings = Object.assign(
-  { profile: 'spectacle', sound: true, music: true, calm: matchMedia('(prefers-reduced-motion: reduce)').matches },
+  { profile: 'spectacle', sound: true, music: true, intro: true, calm: matchMedia('(prefers-reduced-motion: reduce)').matches },
   store.get('iz.settings', {}),
 );
 const saveSettings = () => store.set('iz.settings', settings);
@@ -86,6 +87,19 @@ const audio = (() => {
       f.type = 'lowpass'; f.frequency.setValueAtTime(300, t); f.frequency.exponentialRampToValueAtTime(3200, t + dur);
       g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.09, t + dur * 0.9); g.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.1);
       o.connect(f); f.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.15);
+    },
+    shnBus: null, shnStop: null,
+    shenron(k, calm) { // orage + grognement + rugissement, sur un bus à part pour pouvoir couper net si on passe l'intro
+      if (!A.ok()) return;
+      A.shenronStop(true);
+      A.shnBus = ctx.createGain(); A.shnBus.gain.value = 0.9; A.shnBus.connect(master);
+      A.shnStop = scheduleShenronSfx(ctx, A.shnBus, noiseBuf, ctx.currentTime + 0.05, k, calm);
+    },
+    shenronStop(now) { // fondu rapide (intro passée) ; now = coupe aussitôt
+      if (!ctx || !A.shnBus) return;
+      const bus = A.shnBus, stop = A.shnStop; A.shnBus = null; A.shnStop = null;
+      bus.gain.cancelScheduledValues(ctx.currentTime); bus.gain.setTargetAtTime(0, ctx.currentTime, now ? 0.01 : 0.06);
+      setTimeout(() => { try { stop && stop(); bus.disconnect(); } catch { /* ignore */ } }, 400);
     },
     press() { A.tone(110, 0.18, { type: 'square', gain: 0.18, slide: -50 }); A.noise(0.08, { gain: 0.15, freq: 700 }); },
     whoosh() { A.noise(0.7, { gain: 0.3, freq: 400, q: 0.7, sweep: 2600 }); A.tone(70, 0.5, { type: 'sawtooth', gain: 0.12, slide: 120 }); },
@@ -186,6 +200,7 @@ const lightEl = $('#light'), streaksEl = $('#streaks'), lockbox = $('#lockbox');
 const goBtn = $('#go'), countEl = $('#count'), oddsEl = $('#odds'), chipsEl = $('#chips');
 const ballsEl = $('#balls'), histEl = $('#history'), toastEl = $('#toast');
 const vignette = $('#vignette'), flashEl = $('#flash');
+const shnEl = $('#shenron'), shnCap = $('#shnCap'), shnSkip = $('#shnSkip'), shn = createShenron($('#shn'));
 const overlay = $('#overlay'), heroWrap = $('#heroWrap'), banner = $('#banner'), actions = $('#actions');
 const ptrs = [...document.querySelectorAll('.ptr')];
 
@@ -451,6 +466,10 @@ $('#duelClose').addEventListener('click', closeDuel);
 duel.addEventListener('click', (e) => { if (e.target === duel) closeDuel(); });
 
 /* ───────────────────────── Invocation ───────────────────────── */
+// Durée de l'intro Shenron selon le spectacle choisi (0 = pas d'intro : le mode Éclair reste éclair)
+const INTRO_SECONDS = { eclair: 0, rapide: 3.2, spectacle: 5, epique: 5 };
+let intro = null;
+
 function invoke() {
   if (state !== 'idle' || !player) return;
   audio.unlock();
@@ -461,16 +480,55 @@ function invoke() {
   const b = Math.floor(idlePos), frac = idlePos - b;
   const T = 4 + P.travel;
   const strip = buildStrip(pool, winner, T, T + 21, idle.slice(b - 4, b + 5)); // continuité visuelle
-  preload(strip);
+  preload(strip); // les images se chargent pendant l'intro
   const p0 = 4 + frac, base = p0 - 0.4, target = T + f;
-  run = { P, strip, winner, T, f, p0, base, target, vmax: vmaxFor(target - base, P), t0: performance.now(),
+  run = { P, strip, winner, T, f, p0, base, target, vmax: vmaxFor(target - base, P), t0: 0,
     lit: 0, lastIdx: Math.floor(p0 + 0.5), sx: f, sv: 0, launched: false, lockOn: false, done: false, nextBeat: 0, theta: 0, omega: 0, lastVib: 0 };
-  state = 'run';
   goBtn.classList.add('busy'); goBtn.disabled = true; chipBtns.forEach((c) => (c.disabled = true));
+  panel.hidden = true; audio.musicDuck(true);
+  const D = settings.intro ? INTRO_SECONDS[settings.profile] || 0 : 0;
+  if (D > 0) startIntro(D); else launchRun();
+}
+
+function launchRun() {
+  run.t0 = performance.now();
+  state = 'run';
   clearLive();
-  audio.press(); audio.riser(P.Tcharge); audio.musicDuck(true); vibrate(15);
+  audio.press(); audio.riser(run.P.Tcharge); vibrate(15);
   oddsEl.textContent = 'Charge…';
 }
+
+/* ───────────────────────── Intro : Shenron surgit de l'orage ───────────────────────── */
+function startIntro(D) {
+  state = 'intro';
+  intro = { t: 0, D, k: D / SHN.D, cap: -1, roared: false };
+  shn.begin({ k: intro.k, calm: settings.calm });
+  shnEl.hidden = false; shnEl.classList.remove('out'); void shnEl.offsetWidth; shnEl.classList.add('on');
+  shnCap.classList.remove('in'); shnSkip.classList.remove('in');
+  audio.shenron(intro.k, settings.calm); vibrate([30, 50, 30]);
+  oddsEl.textContent = 'Shenron s’éveille…';
+  updateIntro(0);
+}
+function updateIntro(dt) {
+  const I = intro; if (!I) return;
+  I.t += dt;
+  const r = shn.frame(I.t);
+  const ci = SHN.caps.findIndex(([a, b]) => r.tt >= a && r.tt < b);
+  if (ci !== I.cap) { I.cap = ci; if (ci >= 0) shnCap.textContent = SHN.caps[ci][2]; shnCap.classList.toggle('in', ci >= 0); }
+  shnSkip.classList.toggle('in', I.t > 1);
+  if (!I.roared && r.roar > 0.5) { I.roared = true; vibrate([60, 40, 90, 40, 140]); }
+  if (I.t >= I.D) endIntro(false);
+}
+function endIntro(skipped) {
+  if (!intro) return;
+  intro = null;
+  if (skipped) { audio.shenronStop(false); if (!settings.calm) flashEl.animate([{ opacity: 0 }, { opacity: 0.4, offset: 0.25 }, { opacity: 0 }], { duration: 260 }); }
+  shnEl.classList.add('out'); shnEl.classList.remove('on'); shnCap.classList.remove('in'); shnSkip.classList.remove('in');
+  setTimeout(() => { if (!intro) shnEl.hidden = true; }, 520);
+  launchRun();
+}
+const skipIntro = () => { if (intro && intro.t > 1) endIntro(true); };
+shnEl.addEventListener('click', skipIntro);
 
 function updateRun(now, dt) {
   const r = run, P = r.P;
@@ -608,6 +666,7 @@ Object.entries(PROFILES).forEach(([key, P]) => {
 });
 $('#btn-snd').addEventListener('click', () => { settings.sound = !settings.sound; saveSettings(); audio.unlock(); if (!settings.sound) { audio.whirrStop(); audio.musicStop(); } else audio.musicStart(); syncSettings(); });
 $('#btn-mus').addEventListener('click', () => { settings.music = !settings.music; saveSettings(); audio.unlock(); if (settings.music) audio.musicStart(); else audio.musicStop(); syncSettings(); });
+$('#btn-intro').addEventListener('click', () => { settings.intro = !settings.intro; saveSettings(); syncSettings(); });
 $('#btn-calm').addEventListener('click', () => { settings.calm = !settings.calm; saveSettings(); syncSettings(); });
 $('#btn-clear').addEventListener('click', () => { history = []; saveHistory(); renderHistory(); refreshPool(); toast('Historique effacé (les decks ne changent pas)'); });
 let decksT = 0;
@@ -621,11 +680,13 @@ $('#btn-decks').addEventListener('click', (e) => {
 function syncSettings() {
   document.body.classList.toggle('calm', settings.calm);
   $('#btn-snd').setAttribute('aria-pressed', String(settings.sound)); $('#btn-mus').setAttribute('aria-pressed', String(settings.music));
+  $('#btn-intro').setAttribute('aria-pressed', String(settings.intro)); $('#btn-intro').textContent = settings.intro ? 'Activée' : 'Désactivée';
   $('#btn-calm').setAttribute('aria-pressed', String(settings.calm)); $('#btn-calm').textContent = settings.calm ? 'Activé' : 'Désactivé';
   document.querySelectorAll('#profiles .pill').forEach((b) => b.classList.toggle('on', b.dataset.k === settings.profile));
 }
 addEventListener('keydown', (e) => {
   if (!duel.hidden) { if (e.key === 'Escape') closeDuel(); return; }
+  if (state === 'intro') { if ([' ', 'Enter', 'Escape'].includes(e.key)) skipIntro(); e.preventDefault(); return; }
   if (e.target.closest && e.target.closest('button') && e.key === 'Enter') return;
   if (e.key === ' ' || e.key === 'Enter') { if (!overlay.hidden) { $('#again').click(); } else invoke(); e.preventDefault(); }
   else if (e.key === 'm') $('#btn-snd').click();
@@ -642,6 +703,7 @@ function frame(now) {
     if (idlePos > 560) { const b = Math.floor(idlePos); idle = makeIdle(pool, idle.slice(b - 4, b + 5)); idlePos = 300 + (idlePos - b); clearLive(); }
     render(idle, idlePos, 0, false); updateBulbs(dt, 0.15);
   } else if (state === 'run') updateRun(now, dt);
+  else if (state === 'intro') { updateIntro(dt); updateBulbs(dt, 0.4); }
   else updateBulbs(dt, 0.4);
   drawFx(dt);
   requestAnimationFrame(frame);
@@ -659,7 +721,8 @@ function boot() {
   preload(CARDS.slice(0, 0));
   requestAnimationFrame(frame);
 }
-addEventListener('resize', () => { layout(); fxResize(); });
+addEventListener('resize', () => { layout(); fxResize(); if (intro) shn.resize(); });
 document.addEventListener('visibilitychange', () => audio.pause(document.hidden));
 boot();
-window.__iz = { state: () => state, invoke, selectPlayer, PLAYERS, settings, audio, history: () => history, owners: () => Object.fromEntries(CARDS.map((c) => [c.id, c.owner])), poolSize: () => pool.length };
+window.__iz = { state: () => state, invoke, selectPlayer, PLAYERS, settings, audio, history: () => history, owners: () => Object.fromEntries(CARDS.map((c) => [c.id, c.owner])), poolSize: () => pool.length,
+  debugShenron: (t, k = 1, calm = false) => { shn.begin({ k, calm }); shnEl.hidden = false; shnEl.classList.add('on'); return shn.frame(t); } };
