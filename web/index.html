@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#05060F">
+<title>Invocation Z</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bungee&family=Chakra+Petch:wght@500;700&family=Barlow+Semi+Condensed:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <filter id="mb" x="-5%" y="-5%" width="110%" height="110%"><feGaussianBlur id="mbBlur" stdDeviation="0 0"/></filter>
+</svg>
+
+<div id="stars" aria-hidden="true"></div>
+
+<main id="stage">
+  <header>
+    <div class="logo">INVOCATION <b>Z</b></div>
+    <nav id="chips" aria-label="Joueur qui invoque"></nav>
+    <div class="tools">
+      <button id="btn-snd" class="tool" title="Son" aria-pressed="true">♪</button>
+      <button id="btn-gear" class="tool" title="Réglages">⚙</button>
+    </div>
+  </header>
+
+  <div id="panel" hidden>
+    <div class="row"><span>Durée du spectacle</span><div id="profiles"></div></div>
+    <div class="row"><span>Mode calme</span><button id="btn-calm" class="pill" aria-pressed="false">Désactivé</button></div>
+    <div class="row"><span>Historique</span><button id="btn-clear" class="pill">Effacer</button></div>
+  </div>
+
+  <div id="balls" aria-hidden="true"></div>
+
+  <section id="machine">
+    <div class="bulbs top" id="bulbsTop"></div>
+    <div id="window">
+      <div id="light"></div>
+      <div id="strip"></div>
+      <div class="edge l"></div><div class="edge r"></div>
+      <div class="ptr top"></div><div class="ptr bot"></div>
+      <div id="streaks"></div>
+      <div id="lockbox"><i></i><i></i><i></i><i></i></div>
+    </div>
+    <div class="bulbs bot" id="bulbsBot"></div>
+  </section>
+
+  <div id="info">
+    <div class="count"><span id="count">239</span> <small>/ 239 cartes en jeu</small></div>
+    <div class="odds" id="odds">Choisis qui invoque</div>
+  </div>
+
+  <button id="go" disabled aria-label="Invocation"><span class="orb"><em></em><em></em><em></em><em></em></span><span class="lbl">INVOCATION</span></button>
+
+  <div id="history" aria-label="Dernières cartes"></div>
+</main>
+
+<div id="vignette"></div>
+<canvas id="fx"></canvas>
+<div id="flash"></div>
+
+<div id="overlay" hidden>
+  <div id="rays"></div>
+  <div id="heroWrap"></div>
+  <div id="banner"><div class="nm" id="bnName"></div><div class="ow" id="bnOwner"></div></div>
+  <div id="actions"><button id="again" class="cta">Nouvelle invocation</button><button id="undo" class="ghost">Annuler ce tirage</button></div>
+</div>
+
+<div id="toast" role="status" aria-live="polite"></div>
+<div id="demo" hidden>VERSION DE TEST · cartes provisoires</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
