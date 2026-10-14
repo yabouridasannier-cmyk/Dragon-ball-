@@ -195,7 +195,7 @@ function layout() {
 
 const faceHTML = (c) => (c.img
   ? `<img src="${esc(c.img)}" alt="${esc(c.name)}" draggable="false">`
-  : `<div class="face"><div class="t">DBZ</div><div class="n">${c.id}</div><div class="nm">${esc(c.name)}</div></div>`);
+  : `<div class="face"><div class="t">${c.missing ? 'IMAGE À VENIR' : 'DBZ'}</div><div class="n">${c.id}</div><div class="nm">${esc(c.name)}</div></div>`);
 
 const live = new Map();
 function clearLive() { for (const el of live.values()) el.remove(); live.clear(); }
