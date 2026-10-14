@@ -20,6 +20,11 @@ function placeholderCards(players) {
 }
 
 export async function loadData() {
+  const inline = typeof window !== 'undefined' && window.__IZ_DATA__; // données intégrées à la page (version privée)
+  if (inline && Array.isArray(inline.cards) && inline.cards.length) {
+    const cards = inline.cards.map((c) => ({ hue: (c.id * 37) % 360, img: null, ...c }));
+    return { players: inline.players || DEFAULT_PLAYERS, cards, demo: false };
+  }
   try {
     const res = await fetch('cards.json', { cache: 'no-cache' });
     if (res.ok) {

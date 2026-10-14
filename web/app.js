@@ -357,7 +357,7 @@ function updateRun(now, dt) {
     if (vel < 6 && now - r.lastVib > 60) { vibrate(last ? 30 : 8); r.lastVib = now; }
     r.omega -= clamp(vel / 6, 0.15, 1) * (last ? 1.6 : 1) * 380;
     r.lastIdx = idx;
-    if (strip(r)[idx]) oddsEl.textContent = 'Carte n° ' + strip(r)[idx].id;
+    if (strip(r)[idx]) oddsEl.textContent = strip(r)[idx].name;
   }
   // pointeur à bascule (ressort amorti)
   if (vel > 15) { r.theta = -35 + Math.sin(now / 40) * 3; r.omega = 0; }
