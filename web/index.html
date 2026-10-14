@@ -33,6 +33,7 @@
     <div class="row"><span>Durée du spectacle</span><div id="profiles"></div></div>
     <div class="row"><span>Mode calme</span><button id="btn-calm" class="pill" aria-pressed="false">Désactivé</button></div>
     <div class="row"><span>Historique</span><button id="btn-clear" class="pill">Effacer</button></div>
+    <div class="row"><span>Decks (propriétaires)</span><button id="btn-decks" class="pill">Réinitialiser</button></div>
   </div>
 
   <div id="balls" aria-hidden="true"></div>
@@ -57,7 +58,8 @@
 
   <button id="go" disabled aria-label="Invocation"><span class="orb"><em></em><em></em><em></em><em></em></span><span class="lbl">INVOCATION</span></button>
 
-  <div id="history" aria-label="Dernières cartes"></div>
+  <div id="histHint" aria-live="polite"></div>
+  <div id="history" aria-label="Cartes tirées : touche une carte pour valider le combat"></div>
 </main>
 
 <div id="vignette"></div>
@@ -69,6 +71,22 @@
   <div id="heroWrap"></div>
   <div id="banner"><div class="nm" id="bnName"></div><div class="ow" id="bnOwner"></div></div>
   <div id="actions"><button id="again" class="cta">Nouvelle invocation</button><button id="undo" class="ghost">Annuler ce tirage</button></div>
+</div>
+
+<div id="duel" hidden role="dialog" aria-modal="true" aria-labelledby="duelTitle">
+  <div class="box">
+    <button id="duelClose" class="x" aria-label="Fermer">✕</button>
+    <div id="duelCard"></div>
+    <h2 id="duelTitle"></h2>
+    <p id="duelInfo"></p>
+    <p id="duelState"></p>
+    <div class="btns">
+      <button id="duelWin" class="cta win"></button>
+      <button id="duelLose" class="cta lose"></button>
+    </div>
+    <button id="duelReset" class="ghost" hidden>Remettre le combat à jouer</button>
+    <p id="duelLock" hidden>Cette carte a été tirée de nouveau depuis : son résultat est figé.</p>
+  </div>
 </div>
 
 <div id="toast" role="status" aria-live="polite"></div>

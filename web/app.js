@@ -17,12 +17,20 @@ const byId = new Map(CARDS.map((c) => [c.id, c]));
 const playerOf = (pid) => PLAYERS.find((p) => p.id === pid) || PLAYERS[0];
 const colorOf = (pid) => playerOf(pid).color;
 
+// Decks : propriétaires d'origine (document) + changements décidés par les combats (gardés dans le navigateur)
+const owners0 = new Map(CARDS.map((c) => [c.id, c.owner]));
+{ const saved = store.get('iz.owners', {}); for (const c of CARDS) if (saved[c.id] && PLAYERS.some((p) => p.id === saved[c.id])) c.owner = saved[c.id]; }
+const saveOwners = () => { const o = {}; for (const c of CARDS) if (c.owner !== owners0.get(c.id)) o[c.id] = c.owner; store.set('iz.owners', o); };
+
 const settings = Object.assign(
   { profile: 'spectacle', sound: true, music: true, calm: matchMedia('(prefers-reduced-motion: reduce)').matches },
   store.get('iz.settings', {}),
 );
 const saveSettings = () => store.set('iz.settings', settings);
-let history = store.get('iz.history', []).filter((h) => byId.has(h.cardId));
+// Entrée d'historique : { cardId, playerId (qui tire), from (propriétaire avant le tirage), status: pending | won | lost, ts }
+let history = store.get('iz.history', []).filter((h) => byId.has(h.cardId))
+  .map((h) => ({ ...h, status: h.status || 'lost', from: h.from || owners0.get(h.cardId) })); // tirages d'avant la validation des combats : rien ne change
+const saveHistory = () => store.set('iz.history', history);
 
 /* ───────────────────────── Son (Web Audio, sons de synthèse) ───────────────────────── */
 const audio = (() => {
@@ -309,46 +317,138 @@ function animateNumber(el, from, to, ms) {
 PLAYERS.forEach((p) => {
   const b = document.createElement('button');
   b.className = 'chip'; b.style.setProperty('--c', p.color); b.dataset.id = p.id;
-  b.innerHTML = `<span class="dot">${'★'.repeat(p.stars)}</span><span>${esc(p.name)}</span>`;
+  b.innerHTML = `<span class="dot">${'★'.repeat(p.stars)}</span><span>${esc(p.name)}</span><span class="n" title="Cartes dans le deck"></span>`;
   b.addEventListener('click', () => selectPlayer(p));
   chipsEl.appendChild(b);
 });
 const chipBtns = [...chipsEl.children];
 
+// Cartes tirables par un joueur : celles des autres, sauf celles « sur la table » (combat pas encore validé)
+const pendingIds = () => new Set(history.filter((h) => h.status === 'pending').map((h) => h.cardId));
+const poolFor = (pid) => { const hold = pendingIds(); return buildPool(CARDS, pid).filter((c) => !hold.has(c.id)); };
+
+function updateDeckCounts() {
+  const n = {}; for (const c of CARDS) n[c.owner] = (n[c.owner] || 0) + 1;
+  chipBtns.forEach((b) => {
+    const el = b.querySelector('.n'), v = String(n[b.dataset.id] || 0);
+    if (el && el.textContent !== v) { el.textContent = v; el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
+  });
+}
+
+// Les cartes visibles qui ne sont plus tirables se figent puis se désintègrent
+function purgeIdle(test) {
+  let hit = 0;
+  for (const [k, el] of live) if (idle[k] && test(idle[k])) { el.classList.add('dust'); hit++; }
+  setTimeout(() => {
+    for (let i = 0; i < idle.length; i++) if (test(idle[i])) idle[i] = pool[randomInt(pool.length)];
+    for (const [k, el] of live) if (el.classList.contains('dust')) { el.remove(); live.delete(k); }
+  }, settings.calm ? 0 : 520);
+  return hit;
+}
+
+function refreshPool() {
+  updateDeckCounts();
+  if (!player) return;
+  const before = pool.length;
+  pool = poolFor(player.id);
+  animateNumber(countEl, before, pool.length, 500);
+  if (state === 'idle') {
+    oddsEl.textContent = `1 chance sur ${pool.length}`;
+    const inPool = new Set(pool.map((c) => c.id));
+    purgeIdle((c) => !inPool.has(c.id));
+  }
+}
+
 function selectPlayer(p) {
   if (state !== 'idle' || (player && player.id === p.id)) return;
   audio.unlock(); audio.pick(p.stars);
   const before = pool.length;
-  player = p; pool = buildPool(CARDS, p.id);
+  player = p; pool = poolFor(p.id);
   root.style.setProperty('--accent', p.color);
   chipBtns.forEach((b) => b.classList.toggle('on', b.dataset.id === p.id));
-  // Filtrage visible : les cartes du joueur visibles à l'écran se figent puis se désintègrent
-  let hit = 0;
-  for (const [k, el] of live) if (idle[k] && idle[k].owner === p.id) { el.classList.add('dust'); hit++; }
-  if (hit) audio.filter();
-  setTimeout(() => {
-    for (let i = 0; i < idle.length; i++) if (idle[i].owner === p.id) idle[i] = pool[randomInt(pool.length)];
-    for (const [k, el] of live) if (el.classList.contains('dust')) { el.remove(); live.delete(k); }
-  }, settings.calm ? 0 : 520);
+  if (purgeIdle((c) => c.owner === p.id)) audio.filter();
   animateNumber(countEl, before, pool.length, 600);
   oddsEl.textContent = `1 chance sur ${pool.length}`;
-  toast(`Les ${CARDS.length - pool.length} cartes de ${p.name} sont retirées du tirage`);
+  toast(`Les ${CARDS.filter((c) => c.owner === p.id).length} cartes de ${p.name} sont retirées du tirage`);
   goBtn.disabled = false;
   preload(pool.slice(0, 0).concat(Array.from({ length: 40 }, () => pool[randomInt(pool.length)])));
 }
 
-/* ───────────────────────── Historique ───────────────────────── */
+/* ───────────────────────── Historique et combats ───────────────────────── */
+const STATUS = { pending: ['⚔', 'Combat à jouer'], won: ['✔', 'Gagné'], lost: ['✘', 'Perdu'] };
+const histHint = $('#histHint');
 function renderHistory() {
   histEl.innerHTML = '';
-  history.slice(0, 8).forEach((h) => {
+  history.slice(0, 16).forEach((h) => {
     const c = byId.get(h.cardId); if (!c) return;
-    const d = document.createElement('div'); d.className = 'h'; d.title = c.name;
-    d.style.setProperty('--oc', colorOf(c.owner)); d.style.setProperty('--h', c.hue);
-    d.innerHTML = c.img ? `<img src="${esc(c.img)}" alt="">` : `<div class="face">${c.id}</div>`;
-    histEl.appendChild(d);
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'h ' + h.status;
+    b.setAttribute('aria-label', `${c.name} — ${STATUS[h.status][1]}`); b.title = `${c.name} · ${STATUS[h.status][1]}`;
+    b.style.setProperty('--oc', colorOf(c.owner)); b.style.setProperty('--h', c.hue);
+    b.innerHTML = `${c.img ? `<img src="${esc(c.img)}" alt="">` : `<div class="face">${c.id}</div>`}<i class="st">${STATUS[h.status][0]}</i>`;
+    b.addEventListener('click', () => openDuel(h));
+    histEl.appendChild(b);
   });
+  const k = history.filter((h) => h.status === 'pending').length;
+  histHint.textContent = k ? `⚔ ${k} combat${k > 1 ? 's' : ''} à valider — touche une carte` : history.length ? 'Touche une carte pour modifier son résultat' : '';
 }
-const pushHistory = (entry) => { history.unshift(entry); history = history.slice(0, 200); store.set('iz.history', history); renderHistory(); };
+const pushHistory = (entry) => {
+  const c = byId.get(entry.cardId);
+  history.unshift({ status: 'pending', from: c.owner, ...entry });
+  history = history.slice(0, 200); saveHistory(); renderHistory();
+};
+
+// Une carte ne peut être modifiée que tant qu'elle n'a pas été retirée depuis (sinon les propriétaires se mélangent)
+const isLatest = (h) => history.find((x) => x.cardId === h.cardId) === h;
+function resolveDuel(h, status) {
+  const c = byId.get(h.cardId);
+  c.owner = status === 'won' ? h.playerId : h.from; // gagné : deck du joueur qui a tiré ; perdu ou en attente : propriétaire d'origine
+  h.status = status; saveHistory(); saveOwners();
+  renderHistory(); refreshPool();
+  if (state === 'idle') for (const [k, el] of live) if (idle[k]) el.style.setProperty('--oc', colorOf(idle[k].owner));
+}
+
+const duel = $('#duel'), duelCard = $('#duelCard'), duelWin = $('#duelWin'), duelLose = $('#duelLose'), duelReset = $('#duelReset');
+let duelEntry = null, duelOpener = null;
+function openDuel(h) {
+  if (state !== 'idle') return;
+  const c = byId.get(h.cardId); if (!c) return;
+  audio.unlock(); audio.click();
+  duelEntry = h; duelOpener = document.activeElement;
+  const drawer = playerOf(h.playerId), from = playerOf(h.from), live_ = isLatest(h);
+  duel.style.setProperty('--oc', colorOf(c.owner));
+  duelCard.innerHTML = `<div class="hero" style="--oc:${colorOf(c.owner)};--h:${c.hue}">${faceHTML(c)}</div>`;
+  $('#duelTitle').textContent = c.name;
+  $('#duelInfo').innerHTML = `Tirée par <b style="color:${drawer.color}">${esc(drawer.name)}</b> · carte de <b style="color:${from.color}">${esc(from.name)}</b>`;
+  $('#duelState').textContent = h.status === 'pending' ? '⚔ Combat à jouer' : h.status === 'won' ? `✔ Gagné — dans le deck de ${drawer.name}` : `✘ Perdu — restituée à ${from.name}`;
+  $('#duelState').dataset.s = h.status;
+  duelWin.innerHTML = `🏆 GAGNÉ<small>va chez ${esc(drawer.name)}</small>`; duelLose.innerHTML = `↩ PERDU<small>retourne chez ${esc(from.name)}</small>`;
+  duelWin.disabled = duelLose.disabled = !live_;
+  duelWin.setAttribute('aria-pressed', String(h.status === 'won')); duelLose.setAttribute('aria-pressed', String(h.status === 'lost'));
+  duelReset.hidden = !live_ || h.status === 'pending';
+  $('#duelLock').hidden = live_;
+  duel.hidden = false; duelWin.focus({ preventScroll: true });
+}
+function closeDuel() {
+  if (duel.hidden) return;
+  duel.hidden = true; duelEntry = null;
+  if (duelOpener && duelOpener.isConnected) duelOpener.focus({ preventScroll: true });
+}
+function answerDuel(status) {
+  const h = duelEntry; if (!h || !isLatest(h)) return;
+  const c = byId.get(h.cardId), drawer = playerOf(h.playerId), from = playerOf(h.from);
+  resolveDuel(h, status);
+  if (status === 'won') { audio.pick(drawer.stars); toast(`${c.name} rejoint le deck de ${drawer.name} (${CARDS.filter((x) => x.owner === drawer.id).length} cartes)`); }
+  else if (status === 'lost') { audio.click(); toast(`${c.name} retourne chez ${from.name}`); }
+  else { audio.click(); toast(`${c.name} : combat remis à jouer`); }
+  duelCard.firstChild.animate(status === 'won' ? [{ filter: 'brightness(1)' }, { filter: 'brightness(2.2)', offset: 0.3 }, { filter: 'brightness(1)' }]
+    : [{ translate: '0 0' }, { translate: '-10px 0', offset: 0.2 }, { translate: '10px 0', offset: 0.5 }, { translate: '0 0' }], { duration: settings.calm ? 150 : 420 });
+  setTimeout(closeDuel, settings.calm ? 120 : 430);
+}
+duelWin.addEventListener('click', () => answerDuel('won'));
+duelLose.addEventListener('click', () => answerDuel('lost'));
+duelReset.addEventListener('click', () => answerDuel('pending'));
+$('#duelClose').addEventListener('click', closeDuel);
+duel.addEventListener('click', (e) => { if (e.target === duel) closeDuel(); });
 
 /* ───────────────────────── Invocation ───────────────────────── */
 function invoke() {
@@ -449,6 +549,7 @@ function reveal() {
   const rect = el ? el.getBoundingClientRect() : { left: innerWidth / 2 - cardW / 2, top: innerHeight / 2 - cardH / 2, width: cardW, height: cardH };
   const col = colorOf(w.owner), who = playerOf(w.owner);
   pushHistory({ cardId: w.id, playerId: player.id, ts: Date.now() });
+  refreshPool(); // la carte tirée est « sur la table » jusqu'au résultat du combat
   store.set('iz.pending', null);
   const go = () => {
     vignette.style.opacity = 0; streaksEl.style.opacity = 0; stripEl.style.filter = 'none'; machine.style.transform = '';
@@ -481,7 +582,8 @@ function reveal() {
 }
 
 function backToIdle() {
-  const r = run, visible = r ? r.strip.slice(r.T - 4, r.T + 5) : [];
+  const inPool = new Set(pool.map((c) => c.id));
+  const r = run, visible = r ? r.strip.slice(r.T - 4, r.T + 5).map((c) => (c && inPool.has(c.id) ? c : null)) : [];
   idle = makeIdle(pool, visible); idlePos = 300; clearLive();
   balls.forEach((b) => b.classList.remove('lit')); lockbox.classList.remove('on');
   ptrs.forEach((p) => (p.style.transform = '')); banner.classList.remove('in'); actions.classList.remove('in');
@@ -492,7 +594,7 @@ function backToIdle() {
 }
 $('#again').addEventListener('click', () => { audio.click(); backToIdle(); });
 $('#undo').addEventListener('click', () => {
-  audio.click(); history.shift(); store.set('iz.history', history); renderHistory(); backToIdle(); toast('Dernier tirage annulé');
+  audio.click(); history.shift(); saveHistory(); renderHistory(); refreshPool(); backToIdle(); toast('Dernier tirage annulé');
 });
 goBtn.addEventListener('click', invoke);
 
@@ -507,7 +609,15 @@ Object.entries(PROFILES).forEach(([key, P]) => {
 $('#btn-snd').addEventListener('click', () => { settings.sound = !settings.sound; saveSettings(); audio.unlock(); if (!settings.sound) { audio.whirrStop(); audio.musicStop(); } else audio.musicStart(); syncSettings(); });
 $('#btn-mus').addEventListener('click', () => { settings.music = !settings.music; saveSettings(); audio.unlock(); if (settings.music) audio.musicStart(); else audio.musicStop(); syncSettings(); });
 $('#btn-calm').addEventListener('click', () => { settings.calm = !settings.calm; saveSettings(); syncSettings(); });
-$('#btn-clear').addEventListener('click', () => { history = []; store.set('iz.history', []); renderHistory(); toast('Historique effacé'); });
+$('#btn-clear').addEventListener('click', () => { history = []; saveHistory(); renderHistory(); refreshPool(); toast('Historique effacé (les decks ne changent pas)'); });
+let decksT = 0;
+$('#btn-decks').addEventListener('click', (e) => {
+  const b = e.currentTarget;
+  if (!b.classList.contains('warn')) { b.classList.add('warn'); b.textContent = 'Confirmer ?'; decksT = setTimeout(() => { b.classList.remove('warn'); b.textContent = 'Réinitialiser'; }, 3500); return; }
+  clearTimeout(decksT); b.classList.remove('warn'); b.textContent = 'Réinitialiser';
+  for (const c of CARDS) c.owner = owners0.get(c.id);
+  history = []; saveHistory(); saveOwners(); renderHistory(); refreshPool(); toast('Decks remis comme dans le document');
+});
 function syncSettings() {
   document.body.classList.toggle('calm', settings.calm);
   $('#btn-snd').setAttribute('aria-pressed', String(settings.sound)); $('#btn-mus').setAttribute('aria-pressed', String(settings.music));
@@ -515,6 +625,7 @@ function syncSettings() {
   document.querySelectorAll('#profiles .pill').forEach((b) => b.classList.toggle('on', b.dataset.k === settings.profile));
 }
 addEventListener('keydown', (e) => {
+  if (!duel.hidden) { if (e.key === 'Escape') closeDuel(); return; }
   if (e.target.closest && e.target.closest('button') && e.key === 'Enter') return;
   if (e.key === ' ' || e.key === 'Enter') { if (!overlay.hidden) { $('#again').click(); } else invoke(); e.preventDefault(); }
   else if (e.key === 'm') $('#btn-snd').click();
@@ -536,13 +647,13 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 function boot() {
-  syncSettings(); layout(); fxResize(); renderHistory();
+  syncSettings(); layout(); fxResize(); renderHistory(); updateDeckCounts();
   idle = makeIdle(CARDS);
   countEl.textContent = CARDS.length; $('.count small').textContent = `/ ${CARDS.length} cartes en jeu`;
   if (demo) $('#demo').hidden = false;
   const pend = store.get('iz.pending', null);
   if (pend && byId.has(pend.cardId)) { // tirage interrompu : le résultat était déjà enregistré, on ne retire pas
-    pushHistory({ cardId: pend.cardId, playerId: pend.playerId, ts: pend.ts }); store.set('iz.pending', null);
+    pushHistory({ cardId: pend.cardId, playerId: pend.playerId, ts: pend.ts }); store.set('iz.pending', null); updateDeckCounts();
     toast('Résultat retrouvé après rechargement : ' + byId.get(pend.cardId).name);
   }
   preload(CARDS.slice(0, 0));
@@ -551,4 +662,4 @@ function boot() {
 addEventListener('resize', () => { layout(); fxResize(); });
 document.addEventListener('visibilitychange', () => audio.pause(document.hidden));
 boot();
-window.__iz = { state: () => state, invoke, selectPlayer, PLAYERS, settings, audio };
+window.__iz = { state: () => state, invoke, selectPlayer, PLAYERS, settings, audio, history: () => history, owners: () => Object.fromEntries(CARDS.map((c) => [c.id, c.owner])), poolSize: () => pool.length };
