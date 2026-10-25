@@ -1,2 +1,1 @@
-web/cards/
-web/cards.json
+# les images des cartes (web/cards, web/cards.json) sont versionnées pour le déploiement Vercel
