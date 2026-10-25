@@ -205,11 +205,15 @@ const ptrs = [...document.querySelectorAll('.ptr')];
 let pitch = 200, cardW = 176, cardH = 246, W = 800;
 function layout() {
   const small = innerWidth < 720;
-  pitch = clamp(small ? 84 : 110, small ? innerWidth / 3.7 : innerWidth / 7.5, 270);
-  pitch = Math.min(pitch, (innerHeight * 0.36) / 1.4 / 0.88 / 1.2);
-  cardW = pitch * 0.88; cardH = cardW * 1.4;
-  root.style.setProperty('--cw', cardW + 'px'); root.style.setProperty('--ch', cardH + 'px');
-  winEl.style.height = Math.round(cardH * 1.2) + 'px';
+  const base = clamp(small ? 84 : 110, small ? innerWidth / 3.7 : innerWidth / 7.5, 270);
+  const apply = (p) => {
+    pitch = p; cardW = pitch * 0.88; cardH = cardW * 1.4;
+    root.style.setProperty('--cw', cardW + 'px'); root.style.setProperty('--ch', cardH + 'px');
+    winEl.style.height = Math.round(cardH * 1.2) + 'px';
+  };
+  apply(Math.min(base, (innerHeight * 0.36) / 1.4 / 0.88 / 1.2));
+  // si le contenu dépasse de l'écran (fenêtre peu haute), on rétrécit les cartes jusqu'à ce que tout tienne
+  for (let i = 0; i < 12 && stage.scrollHeight > stage.clientHeight + 1 && pitch > 52; i++) apply(pitch * 0.93);
   W = winEl.clientWidth;
   clearLive();
 }
@@ -774,6 +778,7 @@ function frame(now) {
 }
 function boot() {
   syncSettings(); layout(); fxResize(); renderHistory(); updateDeckCounts();
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (state === 'idle') layout(); });
   idle = makeIdle(CARDS);
   countEl.textContent = CARDS.length; $('.count small').textContent = `/ ${CARDS.length} cartes en jeu`;
   if (demo) $('#demo').hidden = false;

@@ -57,12 +57,15 @@ header { display: flex; align-items: center; justify-content: space-between; gap
 .pill { padding: 5px 12px; border-radius: 999px; border: 1.5px solid rgba(255, 255, 255, .28); font-size: .85rem; }
 .pill.on, .pill[aria-pressed="true"] { background: var(--gold-300); color: #221400; border-color: var(--gold-300); font-weight: 600; }
 
-#balls { display: flex; justify-content: center; gap: clamp(10px, 3.2vw, 34px); height: 44px; }
-.ball { width: clamp(24px, 4vw, 36px); height: clamp(24px, 4vw, 36px); border-radius: 50%; display: grid; place-items: center; text-align: center; font-size: 7px; line-height: 1; color: #8b1a10;
-  background: radial-gradient(circle at 35% 30%, #5a4a3a, #2a1f18 70%); border: 1.5px solid rgba(255, 255, 255, .15); filter: saturate(.3) brightness(.7);
+/* Les 7 boules de cristal : toujours bien visibles, ambrées au repos, éclatantes quand elles s'allument */
+#balls { --bs: clamp(30px, min(4.4vw, 7.2vh), 56px); display: flex; justify-content: center; gap: clamp(12px, 3.2vw, 40px); height: calc(var(--bs) + 22px); align-items: flex-start; }
+.ball { width: var(--bs); height: var(--bs); border-radius: 50%; display: grid; place-items: center; text-align: center; font-size: calc(var(--bs) * .24); line-height: 1; color: #a8200c;
+  background: radial-gradient(circle at 34% 28%, #ffe7a0, #e8921c 52%, #8a3f00 112%); border: 1.5px solid rgba(255, 236, 170, .55);
+  box-shadow: 0 0 12px rgba(255, 170, 30, .42), inset 0 -4px 7px rgba(110, 40, 0, .45), inset 0 3px 5px rgba(255, 255, 255, .35); opacity: .78;
   transition: all .25s var(--ease-back); }
-.ball.lit { background: radial-gradient(circle at 35% 30%, #fff6c0, #ffb320 55%, #c25a00 110%); filter: none; transform: scale(1.18);
-  box-shadow: 0 0 14px #ffb320, 0 0 34px rgba(255, 170, 30, .8); border-color: #fff3b0; }
+.ball span { text-shadow: 0 0 2px rgba(255, 255, 255, .55); }
+.ball.lit { background: radial-gradient(circle at 35% 30%, #fffbe0, #ffc933 50%, #d86a00 110%); opacity: 1; transform: scale(1.18);
+  box-shadow: 0 0 18px #ffc933, 0 0 44px rgba(255, 170, 30, .9), inset 0 -3px 6px rgba(160, 60, 0, .4); border-color: #fff8c8; }
 
 #machine { position: relative; padding: clamp(16px, 2.4vw, 24px); border-radius: 24px;
   background: linear-gradient(180deg, var(--gold-100) 0%, var(--gold-300) 24%, var(--gold-500) 55%, var(--gold-700) 100%);
@@ -130,7 +133,7 @@ header { display: flex; align-items: center; justify-content: space-between; gap
 #go.busy .orb { animation: none; filter: grayscale(.7) brightness(.65); } #go.busy .lbl { opacity: .6; }
 
 #histHint { min-height: 1.2em; text-align: center; font-size: .85rem; color: var(--ink-dim); letter-spacing: .03em; }
-#history { display: flex; justify-content: safe center; gap: 10px; min-height: 64px; padding: 8px 14px 4px; overflow-x: auto; max-width: 100%; scrollbar-width: thin; }
+#history { display: flex; justify-content: safe center; gap: 10px; min-height: 78px; padding: 8px 14px 12px; overflow-x: auto; overflow-y: hidden; max-width: 100%; scrollbar-width: thin; }
 #history .h { flex: none; width: 42px; height: 58px; border-radius: 6px; overflow: visible; border: 2px solid var(--oc); background: #111; position: relative; padding: 0; cursor: pointer; transition: transform .2s var(--ease-out), box-shadow .2s, filter .2s; }
 #history .h:hover, #history .h:focus-visible { transform: translateY(-5px) scale(1.12); z-index: 4; outline: none; box-shadow: 0 6px 18px #000a, 0 0 14px var(--oc); }
 #history .h img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 4px; }
@@ -269,3 +272,14 @@ body.calm #streaks, body.calm #flash, body.calm #fx { display: none; }
 @media (max-width: 520px) { #journal { padding: 0; } #journal .sheet { max-height: 100%; height: 100%; border-radius: 0; } .jr { grid-template-columns: 38px 1fr; } .jst { grid-column: 1 / -1; justify-content: flex-end; } .jt { width: 38px; height: 54px; } #jMode { text-align: left; } }
 @media (max-width: 400px) { .tools { gap: 4px; } }
 body.jopen #toast { bottom: auto; top: 14px; translate: -50% -20px; } body.jopen #toast.in { translate: -50% 0; }
+
+/* Fenêtres peu hautes (portable, volet de visionneuse) : tout doit tenir à l'écran */
+#stage { overflow-y: auto; overflow-x: hidden; scrollbar-width: none; } #stage::-webkit-scrollbar { display: none; }
+@media (max-height: 780px) {
+  #go .orb { width: clamp(60px, 9.5vh, 88px); height: clamp(60px, 9.5vh, 88px); } #go .lbl { font-size: clamp(.9rem, 2vw, 1.2rem); } #go { gap: 3px; padding-top: 0; padding-bottom: 0; }
+  #histHint { font-size: .75rem; min-height: 1em; } #history { min-height: 62px; padding-top: 6px; padding-bottom: 10px; } #history .h { width: 34px; height: 47px; }
+  #info .count { font-size: clamp(1rem, 2vw, 1.3rem); } #stage { gap: 3px; padding-top: 6px; padding-bottom: 6px; }
+}
+@media (max-height: 640px) {
+  #histHint { display: none; } #balls { --bs: clamp(26px, 6vh, 40px); height: calc(var(--bs) + 16px); } #go .orb { width: 56px; height: 56px; } #go .lbl { font-size: .9rem; }
+}
