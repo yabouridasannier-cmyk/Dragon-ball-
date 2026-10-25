@@ -14,13 +14,13 @@ const store = {
 };
 const vibrate = (p) => { try { navigator.vibrate && !settings.calm && navigator.vibrate(p); } catch { /* ignore */ } };
 
-const { players: PLAYERS, cards: CARDS, demo } = await loadData();
+const { players: PLAYERS, cards: CARDS, demo, asOf } = await loadData();
 const byId = new Map(CARDS.map((c) => [c.id, c]));
 const playerOf = (pid) => PLAYERS.find((p) => p.id === pid) || PLAYERS[0];
 const colorOf = (pid) => playerOf(pid).color;
 
 // Journal des combats : toutes les invocations, pour toujours. Les decks se déduisent du journal (propriétaire d'origine + combats gagnés).
-const journal = createJournal({ cards: CARDS, store, claudeApi: window.claude });
+const journal = createJournal({ cards: CARDS, store, claudeApi: window.claude, asOf });
 const originOf = (id) => journal.originOf(id);
 function applyOwners() { const m = journal.ownerMap(); for (const c of CARDS) c.owner = m.get(c.id) || originOf(c.id); }
 applyOwners();
@@ -471,9 +471,9 @@ function renderJournal() {
     const dr = playerOf(e.playerId), fr = playerOf(e.from);
     const img = c.img ? `<img src="${esc(c.img)}" alt="" loading="lazy">` : `<div class="face">${c.id}</div>`;
     const st = (s, lab) => `<button type="button" data-s="${s}" aria-pressed="${e.status === s}" aria-label="${lab}" title="${lab}">${STATUS[s][0]}</button>`;
-    html += `<div class="jr s-${e.status}" data-id="${esc(e.id)}"><div class="jt" style="--oc:${colorOf(c.owner)};--h:${c.hue}">${img}</div>
+    html += `<div class="jr s-${e.status}${journal.isArchived(e) ? ' s-archived' : ''}" data-id="${esc(e.id)}"><div class="jt" style="--oc:${colorOf(c.owner)};--h:${c.hue}">${img}</div>
       <div class="jm"><b>${esc(c.name)}</b><span><i style="color:${dr.color}">${esc(dr.name)}</i> ← <i style="color:${fr.color}">${esc(fr.name)}</i> · ${fmtHour(e.ts)}${e.note ? ` · <em>${esc(e.note)}</em>` : ''}</span></div>
-      <div class="jst">${e.status === 'void' ? `<button type="button" data-s="pending" class="jrest">Rétablir</button>` : `${st('pending', 'Combat à jouer')}${st('won', 'Gagné : la carte va chez ' + dr.name)}${st('lost', 'Perdu : la carte reste à ' + fr.name)}<button type="button" data-s="void" class="jx" aria-label="Annuler ce tirage" title="Annuler ce tirage (rétablissable)">🗑</button>`}</div></div>`;
+      <div class="jst">${journal.isArchived(e) ? `<span class="jarch" title="Ce tirage date d’avant le document de référence du ${esc(fmtDay(asOf))} : il y est déjà compté">📄 dans le document</span>` : e.status === 'void' ? `<button type="button" data-s="pending" class="jrest">Rétablir</button>` : `${st('pending', 'Combat à jouer')}${st('won', 'Gagné : la carte va chez ' + dr.name)}${st('lost', 'Perdu : la carte reste à ' + fr.name)}<button type="button" data-s="void" class="jx" aria-label="Annuler ce tirage" title="Annuler ce tirage (rétablissable)">🗑</button>`}</div></div>`;
   }
   if (!rows.length) html = `<p class="jempty">${all.length ? 'Aucun tirage ne correspond.' : 'Aucun tirage pour le moment. Les invocations apparaîtront ici et resteront gardées.'}</p>`;
   else if (rows.length > J.shown) html += `<button type="button" id="jMore" class="pill">Voir plus (${rows.length - J.shown})</button>`;

@@ -283,3 +283,4 @@ body.jopen #toast { bottom: auto; top: 14px; translate: -50% -20px; } body.jopen
 @media (max-height: 640px) {
   #histHint { display: none; } #balls { --bs: clamp(26px, 6vh, 40px); height: calc(var(--bs) + 16px); } #go .orb { width: 56px; height: 56px; } #go .lbl { font-size: .9rem; }
 }
+.jr.s-archived { opacity: .6; } .jarch { font-size: .75rem; color: var(--ink-dim); padding: 4px 10px; border: 1px dashed rgba(255, 255, 255, .25); border-radius: 999px; white-space: nowrap; }

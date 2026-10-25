@@ -10,8 +10,9 @@ const valid = (e) => e && typeof e.id === 'string' && /^[A-Za-z0-9_.~:@+-]{1,120
   && typeof e.playerId === 'string' && STATUSES.includes(e.status);
 const clean = (e) => ({ id: e.id, ts: e.ts, session: e.session ?? e.ts, playerId: e.playerId, cardId: e.cardId, from: e.from ?? null, status: e.status, upd: e.upd ?? e.ts, ...(e.note ? { note: String(e.note).slice(0, 200) } : {}) });
 
-export function createJournal({ cards, store, claudeApi }) {
+export function createJournal({ cards, store, claudeApi, asOf = 0 }) {
   const origin = new Map(cards.map((c) => [c.id, c.owner]));
+  const archived = (e) => e.ts <= asOf; // déjà pris en compte dans le document de référence : plus aucun effet sur les decks
   const log = new Map();
   const listeners = new Set();
   const info = { mode: 'local', storage: true, remoteCount: 0, error: '' }; // mode : local | cloud | cloud-read
@@ -45,17 +46,17 @@ export function createJournal({ cards, store, claudeApi }) {
   function sorted(dir = -1) { return [...log.values()].sort((a, b) => dir * (a.ts - b.ts) || dir * a.id.localeCompare(b.id)); }
   function ownerMap() { // décks déduits du journal
     const m = new Map(origin);
-    for (const e of sorted(1)) if (e.status === 'won' && m.has(e.cardId)) m.set(e.cardId, e.playerId);
+    for (const e of sorted(1)) if (e.status === 'won' && !archived(e) && m.has(e.cardId)) m.set(e.cardId, e.playerId);
     return m;
   }
-  const pendingIds = () => new Set([...log.values()].filter((e) => e.status === 'pending').map((e) => e.cardId));
-  const pendingCount = () => [...log.values()].filter((e) => e.status === 'pending').length;
+  const pendingIds = () => new Set([...log.values()].filter((e) => e.status === 'pending' && !archived(e)).map((e) => e.cardId));
+  const pendingCount = () => [...log.values()].filter((e) => e.status === 'pending' && !archived(e)).length;
   function currentSession() { // session en cours : celle du dernier tirage tant qu'il date de moins de 4 h
     if (session && Date.now() - session.ts <= GAP) return session.id;
     const last = sorted(-1)[0];
     return last && Date.now() - last.ts <= GAP ? last.session : null;
   }
-  const current = () => { const s = currentSession(); return s == null ? [] : sorted(-1).filter((e) => e.session === s && e.status !== 'void'); };
+  const current = () => { const s = currentSession(); return s == null ? [] : sorted(-1).filter((e) => e.session === s && e.status !== 'void' && !archived(e)); };
 
   // ── Écriture ───────────────────────────────────────────────────────────────────────────────
   function touchSession(ts) {
@@ -77,7 +78,7 @@ export function createJournal({ cards, store, claudeApi }) {
     const n = { ...e, status, upd: Math.max(Date.now(), e.upd + 1) }; put(n); return n;
   }
   function newSession() { const ts = Date.now(); session = { id: ts, ts }; store.set('iz.session', session); emit(); }
-  function voidAll() { const now = Date.now(); let k = 0; for (const e of log.values()) if (e.status !== 'void') { log.set(e.id, { ...e, status: 'void', upd: Math.max(now, e.upd + 1), note: e.note || 'décks réinitialisés' }); pushRemote(log.get(e.id)); k++; } saveLocal(); emit(); return k; }
+  function voidAll() { const now = Date.now(); let k = 0; for (const e of log.values()) if (e.status !== 'void' && !archived(e)) { log.set(e.id, { ...e, status: 'void', upd: Math.max(now, e.upd + 1), note: e.note || 'décks réinitialisés' }); pushRemote(log.get(e.id)); k++; } saveLocal(); emit(); return k; }
 
   // ── Sauvegarde manuelle ────────────────────────────────────────────────────────────────────
   const exportJSON = () => JSON.stringify({ app: 'invocation-z', v: 1, exportedAt: new Date().toISOString(), entries: sorted(1) }, null, 1);
@@ -142,7 +143,7 @@ export function createJournal({ cards, store, claudeApi }) {
   return {
     add, setStatus, newSession, voidAll, exportJSON, importJSON,
     entries: sorted, current, ownerMap, pendingIds, pendingCount, currentSession,
-    originOf: (id) => origin.get(id), info: () => ({ ...info, count: log.size }),
+    originOf: (id) => origin.get(id), isArchived: archived, info: () => ({ ...info, count: log.size, asOf }),
     onChange: (fn) => { listeners.add(fn); return () => listeners.delete(fn); },
   };
 }
