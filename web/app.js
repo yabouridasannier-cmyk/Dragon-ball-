@@ -411,6 +411,8 @@ function renderHistory() {
 
 const duel = $('#duel'), duelCard = $('#duelCard'), duelWin = $('#duelWin'), duelLose = $('#duelLose'), duelReset = $('#duelReset');
 let duelEntry = null, duelOpener = null;
+const modalOpen = () => !jEl.hidden || !duel.hidden;
+const syncModal = () => document.body.classList.toggle('pausebg', modalOpen());
 function openDuel(h) {
   if (state !== 'idle') return;
   const c = byId.get(h.cardId); if (!c) return;
@@ -426,11 +428,11 @@ function openDuel(h) {
   duelWin.innerHTML = `🏆 GAGNÉ<small>va chez ${esc(drawer.name)}</small>`; duelLose.innerHTML = `↩ PERDU<small>retourne chez ${esc(from.name)}</small>`;
   duelWin.setAttribute('aria-pressed', String(h.status === 'won')); duelLose.setAttribute('aria-pressed', String(h.status === 'lost'));
   duelReset.hidden = h.status === 'pending';
-  duel.hidden = false; duelWin.focus({ preventScroll: true });
+  duel.hidden = false; syncModal(); duelWin.focus({ preventScroll: true });
 }
 function closeDuel() {
   if (duel.hidden) return;
-  duel.hidden = true; duelEntry = null;
+  duel.hidden = true; duelEntry = null; syncModal();
   if (duelOpener && duelOpener.isConnected) duelOpener.focus({ preventScroll: true });
 }
 function answerDuel(status) {
@@ -512,9 +514,9 @@ function showTab(tab) {
 function openJournal() {
   if (state === 'run' || state === 'intro') return;
   closeDuel(); audio.unlock(); audio.click();
-  jEl.hidden = false; document.body.classList.add('jopen'); renderJournal(); $('#jClose').focus({ preventScroll: true });
+  jEl.hidden = false; document.body.classList.add('jopen'); syncModal(); renderJournal(); $('#jClose').focus({ preventScroll: true });
 }
-function closeJournal() { if (jEl.hidden) return; jEl.hidden = true; jIO.hidden = true; document.body.classList.remove('jopen'); $('#btn-log').focus({ preventScroll: true }); }
+function closeJournal() { if (jEl.hidden) return; jEl.hidden = true; jIO.hidden = true; document.body.classList.remove('jopen'); syncModal(); $('#btn-log').focus({ preventScroll: true }); }
 $('#btn-log').addEventListener('click', openJournal);
 document.querySelector('.jtabs').addEventListener('click', (e) => { const b = e.target.closest('button[data-tab]'); if (b) { audio.click(); showTab(b.dataset.tab); } });
 $('#sOwner').addEventListener('click', (e) => { const b = e.target.closest('button[data-o]'); if (!b) return; S_.owner = b.dataset.o; S_.shown = 60; renderJournal(); });
@@ -804,6 +806,7 @@ let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   if (state === 'idle') {
+    if (modalOpen()) { requestAnimationFrame(frame); return; } // rien à redessiner derrière une fenêtre
     idlePos += (settings.calm ? 0.2 : 0.4) * dt;
     if (idlePos > 560) { const b = Math.floor(idlePos); idle = makeIdle(pool, idle.slice(b - 4, b + 5)); idlePos = 300 + (idlePos - b); clearLive(); }
     render(idle, idlePos, 0, false); updateBulbs(dt, 0.15);

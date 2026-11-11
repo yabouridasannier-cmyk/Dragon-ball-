@@ -149,7 +149,7 @@ header { display: flex; align-items: center; justify-content: space-between; gap
 @keyframes nbump { 0% { transform: scale(1.7); background: var(--c); color: #111; } 100% { transform: scale(1); } }
 .pill.warn { background: #E5322D; border-color: #E5322D; color: #fff; }
 
-#duel { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 16px; background: rgba(5, 6, 15, .84); backdrop-filter: blur(6px); animation: fadein .2s ease-out; }
+#duel { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 16px; background: rgba(5, 6, 15, .93); }
 #duel .box { position: relative; width: min(420px, 100%); max-height: 100%; overflow: auto; padding: 18px 18px 16px; border-radius: 22px; text-align: center;
   background: linear-gradient(180deg, #121a4a, #0a0f30); border: 1.5px solid var(--oc, var(--gold-300)); box-shadow: 0 0 40px color-mix(in srgb, var(--oc, #ffd24a) 55%, transparent), inset 0 0 30px #0006; }
 #duel .x { position: absolute; top: 8px; right: 10px; width: 34px; height: 34px; border-radius: 50%; font-size: 15px; color: var(--ink-dim); border: 1.5px solid rgba(255, 255, 255, .25); z-index: 2; }
@@ -229,7 +229,7 @@ body.calm #streaks, body.calm #flash, body.calm #fx { display: none; }
 /* Journal des combats */
 .tool { position: relative; }
 #logBadge { position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; display: grid; place-items: center; font: 700 .7rem 'Chakra Petch', sans-serif; background: #FFD24A; color: #3a2600; border: 2px solid #0b1030; }
-#journal { position: fixed; inset: 0; z-index: 91; display: grid; place-items: center; padding: 14px; background: rgba(5, 6, 15, .86); backdrop-filter: blur(6px); animation: fadein .2s ease-out; }
+#journal { position: fixed; inset: 0; z-index: 91; display: grid; place-items: center; padding: 14px; background: rgba(5, 6, 15, .93); }
 #journal .sheet { position: relative; width: min(780px, 100%); max-height: min(100%, 860px); display: flex; flex-direction: column; gap: 10px; padding: 14px 14px 12px; border-radius: 20px; background: linear-gradient(180deg, #121a4a, #0a0f30); border: 1.5px solid var(--gold-300); box-shadow: 0 0 40px #ffb32055, inset 0 0 30px #0006; }
 .jhead { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .jhead h2 { font-family: 'Bungee', sans-serif; font-size: clamp(1rem, 4vw, 1.35rem); letter-spacing: .03em; color: #fff3b0; text-shadow: 0 0 12px #ffb32088; }
@@ -298,3 +298,5 @@ body.jopen #toast { bottom: auto; top: 14px; translate: -50% -20px; } body.jopen
 @media (max-width: 520px) { .sgive { flex-wrap: wrap; justify-content: flex-end; } }
 .jst.sgive button { width: auto; height: auto; min-width: 0; line-height: 1.2; padding: 7px 13px; opacity: 1; flex: none; }
 .jst.sgive { gap: 6px; }
+/* Une fenêtre est ouverte : on fige le décor derrière (économise le processeur des ordinateurs modestes) */
+body.pausebg #stars, body.pausebg #go .orb, body.pausebg .ball, body.pausebg #machine, body.pausebg #machine * { animation-play-state: paused !important; }
