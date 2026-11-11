@@ -452,7 +452,8 @@ duel.addEventListener('click', (e) => { if (e.target === duel) closeDuel(); });
 
 /* ───────────────────────── Journal des combats (long terme) ───────────────────────── */
 const jEl = $('#journal'), jList = $('#jList'), jDecks = $('#jDecks'), jMode = $('#jMode'), jIO = $('#jIO'), jText = $('#jText');
-const J = { filter: 'all', q: '', shown: 60 };
+const J = { filter: 'all', q: '', shown: 60, tab: 'combats' };
+const S_ = { owner: 'all', q: '', shown: 60 }; // onglet « Tri manuel »
 const fmtDay = (ts) => new Date(ts).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
 const fmtHour = (ts) => new Date(ts).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 function renderJournal() {
@@ -460,8 +461,9 @@ function renderJournal() {
   const n0 = {}, n1 = {}; for (const c of CARDS) { n0[originOf(c.id)] = (n0[originOf(c.id)] || 0) + 1; n1[c.owner] = (n1[c.owner] || 0) + 1; }
   jDecks.innerHTML = PLAYERS.map((p) => { const d = (n1[p.id] || 0) - (n0[p.id] || 0); return `<div class="jd" style="--c:${p.color}"><b>${esc(p.name)}</b><span class="jn">${n1[p.id] || 0}</span><small>${d ? (d > 0 ? '+' : '') + d + ' vs départ' : 'inchangé'}</small></div>`; }).join('');
   const all = journal.entries(-1), q = J.q.trim().toLowerCase();
-  const rows = all.filter((e) => (J.filter === 'all' ? e.status !== 'void' : e.status === J.filter) && (!q || (byId.get(e.cardId)?.name || '').toLowerCase().includes(q)));
-  $('#jFilter').querySelectorAll('button').forEach((b) => { b.setAttribute('aria-pressed', String(b.dataset.f === J.filter)); const k = b.dataset.f === 'all' ? all.filter((e) => e.status !== 'void').length : all.filter((e) => e.status === b.dataset.f).length; b.querySelector('i').textContent = k; });
+  const matchF = (e) => (J.filter === 'all' ? e.status !== 'void' : J.filter === 'manual' ? e.kind === 'manual' && e.status !== 'void' : e.status === J.filter);
+  const rows = all.filter((e) => matchF(e) && (!q || (byId.get(e.cardId)?.name || '').toLowerCase().includes(q)));
+  $('#jFilter').querySelectorAll('button').forEach((b) => { b.setAttribute('aria-pressed', String(b.dataset.f === J.filter)); const k = b.dataset.f === 'all' ? all.filter((e) => e.status !== 'void').length : b.dataset.f === 'manual' ? all.filter((e) => e.kind === 'manual' && e.status !== 'void').length : all.filter((e) => e.status === b.dataset.f).length; b.querySelector('i').textContent = k; });
   let html = '', lastSess = null, shown = 0;
   const sessCount = new Map(); for (const e of rows) sessCount.set(e.session, (sessCount.get(e.session) || 0) + 1);
   for (const e of rows) {
@@ -472,15 +474,40 @@ function renderJournal() {
     const img = c.img ? `<img src="${esc(c.img)}" alt="" loading="lazy">` : `<div class="face">${c.id}</div>`;
     const st = (s, lab) => `<button type="button" data-s="${s}" aria-pressed="${e.status === s}" aria-label="${lab}" title="${lab}">${STATUS[s][0]}</button>`;
     html += `<div class="jr s-${e.status}${journal.isArchived(e) ? ' s-archived' : ''}" data-id="${esc(e.id)}"><div class="jt" style="--oc:${colorOf(c.owner)};--h:${c.hue}">${img}</div>
-      <div class="jm"><b>${esc(c.name)}</b><span><i style="color:${dr.color}">${esc(dr.name)}</i> ← <i style="color:${fr.color}">${esc(fr.name)}</i> · ${fmtHour(e.ts)}${e.note ? ` · <em>${esc(e.note)}</em>` : ''}</span></div>
-      <div class="jst">${journal.isArchived(e) ? `<span class="jarch" title="Ce tirage date d’avant le document de référence du ${esc(fmtDay(asOf))} : il y est déjà compté">📄 dans le document</span>` : e.status === 'void' ? `<button type="button" data-s="pending" class="jrest">Rétablir</button>` : `${st('pending', 'Combat à jouer')}${st('won', 'Gagné : la carte va chez ' + dr.name)}${st('lost', 'Perdu : la carte reste à ' + fr.name)}<button type="button" data-s="void" class="jx" aria-label="Annuler ce tirage" title="Annuler ce tirage (rétablissable)">🗑</button>`}</div></div>`;
+      <div class="jm"><b>${esc(c.name)}</b><span>${e.kind === 'manual' ? `✋ <i style="color:${fr.color}">${esc(fr.name)}</i> → <i style="color:${dr.color}">${esc(dr.name)}</i>` : `<i style="color:${dr.color}">${esc(dr.name)}</i> ← <i style="color:${fr.color}">${esc(fr.name)}</i>`} · ${fmtHour(e.ts)}${e.note && e.kind !== 'manual' ? ` · <em>${esc(e.note)}</em>` : ''}</span></div>
+      <div class="jst">${journal.isArchived(e) ? `<span class="jarch" title="Ce tirage date d’avant le document de référence du ${esc(fmtDay(asOf))} : il y est déjà compté">📄 dans le document</span>` : e.status === 'void' ? `<button type="button" data-s="${e.kind === 'manual' ? 'won' : 'pending'}" class="jrest">Rétablir</button>` : e.kind === 'manual' ? `<span class="jman" title="Transfert fait à la main : ${esc(fr.name)} → ${esc(dr.name)}">✋ manuel</span><button type="button" data-s="void" class="jx" aria-label="Annuler ce transfert" title="Annuler ce transfert (la carte retourne chez ${esc(fr.name)})">🗑</button>` : `${st('pending', 'Combat à jouer')}${st('won', 'Gagné : la carte va chez ' + dr.name)}${st('lost', 'Perdu : la carte reste à ' + fr.name)}<button type="button" data-s="void" class="jx" aria-label="Annuler ce tirage" title="Annuler ce tirage (rétablissable)">🗑</button>`}</div></div>`;
   }
-  if (!rows.length) html = `<p class="jempty">${all.length ? 'Aucun tirage ne correspond.' : 'Aucun tirage pour le moment. Les invocations apparaîtront ici et resteront gardées.'}</p>`;
+  if (!rows.length) html = `<p class="jempty">${all.length ? 'Rien ne correspond.' : 'Aucun tirage pour le moment. Les invocations apparaîtront ici et resteront gardées.'}</p>`;
   else if (rows.length > J.shown) html += `<button type="button" id="jMore" class="pill">Voir plus (${rows.length - J.shown})</button>`;
   jList.innerHTML = html;
   const info = journal.info();
   jMode.textContent = info.mode === 'cloud' ? '☁ Sauvegardé en ligne et dans ce navigateur' : info.mode === 'cloud-read' ? '☁ En ligne en lecture seule · sauvegardé dans ce navigateur' : info.storage ? '💾 Sauvegardé dans ce navigateur seulement' : '⚠ Ce navigateur ne garde rien : copie la sauvegarde';
   jMode.dataset.m = info.mode === 'local' && !info.storage ? 'warn' : info.mode;
+  if (J.tab === 'tri') renderSorter();
+}
+const pvOf = (c) => +String(c.hp || 0).replace(/[\s\u00a0]/g, '') || 0;
+function renderSorter() {
+  const cnt = {}; for (const c of CARDS) cnt[c.owner] = (cnt[c.owner] || 0) + 1;
+  $('#sOwner').innerHTML = `<button type="button" data-o="all" aria-pressed="${S_.owner === 'all'}">Toutes <i>${CARDS.length}</i></button>` + PLAYERS.map((p) => `<button type="button" data-o="${esc(p.id)}" aria-pressed="${S_.owner === p.id}" style="--c:${p.color}">${esc(p.name)} <i>${cnt[p.id] || 0}</i></button>`).join('');
+  const q = S_.q.trim().toLowerCase(), hold = journal.pendingIds();
+  const list = [...CARDS].filter((c) => (S_.owner === 'all' || c.owner === S_.owner) && (!q || c.name.toLowerCase().includes(q))).sort((a, b) => pvOf(b) - pvOf(a) || a.id - b.id);
+  let html = '';
+  for (const c of list.slice(0, S_.shown)) {
+    const ow = playerOf(c.owner), busy = hold.has(c.id);
+    const img = c.img ? `<img src="${esc(c.img)}" alt="" loading="lazy">` : `<div class="face">${c.id}</div>`;
+    html += `<div class="jr srow" data-card="${c.id}"><div class="jt" style="--oc:${ow.color};--h:${c.hue}">${img}</div>
+      <div class="jm"><b>${esc(c.name)}</b><span>${c.hp ? esc(c.hp) + ' PV · ' : ''}dans le deck de <i style="color:${ow.color}">${esc(ow.name)}</i>${c.owner !== originOf(c.id) ? ' <em>(déplacée)</em>' : ''}${busy ? ' · ⚔ combat en attente' : ''}</span></div>
+      <div class="jst sgive" role="group" aria-label="Donner ${esc(c.name)} à">${PLAYERS.map((p) => `<button type="button" data-to="${esc(p.id)}" style="--c:${p.color}" aria-pressed="${c.owner === p.id}"${c.owner === p.id || busy ? ' disabled' : ''} title="${c.owner === p.id ? 'Déjà dans son deck' : busy ? 'Valide ou annule d’abord le combat' : 'Donner à ' + esc(p.name)}">${esc(p.name)}</button>`).join('')}</div></div>`;
+  }
+  if (!list.length) html = '<p class="jempty">Aucune carte ne correspond.</p>';
+  else if (list.length > S_.shown) html += `<button type="button" id="sMore" class="pill">Voir plus (${list.length - S_.shown})</button>`;
+  $('#sList').innerHTML = html;
+}
+function showTab(tab) {
+  J.tab = tab;
+  document.querySelectorAll('.jtabs button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
+  $('#jPaneCombats').hidden = tab !== 'combats'; $('#jPaneTri').hidden = tab !== 'tri';
+  renderJournal();
 }
 function openJournal() {
   if (state === 'run' || state === 'intro') return;
@@ -489,6 +516,16 @@ function openJournal() {
 }
 function closeJournal() { if (jEl.hidden) return; jEl.hidden = true; jIO.hidden = true; document.body.classList.remove('jopen'); $('#btn-log').focus({ preventScroll: true }); }
 $('#btn-log').addEventListener('click', openJournal);
+document.querySelector('.jtabs').addEventListener('click', (e) => { const b = e.target.closest('button[data-tab]'); if (b) { audio.click(); showTab(b.dataset.tab); } });
+$('#sOwner').addEventListener('click', (e) => { const b = e.target.closest('button[data-o]'); if (!b) return; S_.owner = b.dataset.o; S_.shown = 60; renderJournal(); });
+$('#sSearch').addEventListener('input', (e) => { S_.q = e.target.value; S_.shown = 60; renderJournal(); });
+$('#sList').addEventListener('click', (e) => {
+  if (e.target.id === 'sMore') { S_.shown += 60; renderJournal(); return; }
+  const b = e.target.closest('button[data-to]'), row = e.target.closest('.srow'); if (!b || !row || b.disabled) return;
+  const c = byId.get(+row.dataset.card), to = playerOf(b.dataset.to), from = playerOf(c.owner);
+  const entry = journal.transfer(c.id, to.id); if (!entry) return;
+  audio.pick(to.stars); toast(`${c.name} : ${from.name} → ${to.name} (${CARDS.filter((x) => x.owner === to.id).length} cartes chez ${to.name})`);
+});
 $('#jClose').addEventListener('click', closeJournal);
 jEl.addEventListener('click', (e) => { if (e.target === jEl) closeJournal(); });
 jList.addEventListener('click', (e) => {
@@ -497,7 +534,7 @@ jList.addEventListener('click', (e) => {
   const entry = journal.entries().find((x) => x.id === row.dataset.id); if (!entry) return;
   audio.click(); journal.setStatus(entry.id, b.dataset.s);
   const c = byId.get(entry.cardId);
-  toast(b.dataset.s === 'void' ? `Tirage de ${c.name} annulé (rétablissable)` : b.dataset.s === 'won' ? `${c.name} → deck de ${playerOf(entry.playerId).name}` : b.dataset.s === 'lost' ? `${c.name} reste à ${playerOf(entry.from).name}` : `${c.name} : combat à jouer`);
+  toast(b.dataset.s === 'void' ? (entry.kind === 'manual' ? `Transfert de ${c.name} annulé (rétablissable)` : `Tirage de ${c.name} annulé (rétablissable)`) : entry.kind === 'manual' ? `${c.name} → deck de ${playerOf(entry.playerId).name}` : b.dataset.s === 'won' ? `${c.name} → deck de ${playerOf(entry.playerId).name}` : b.dataset.s === 'lost' ? `${c.name} reste à ${playerOf(entry.from).name}` : `${c.name} : combat à jouer`);
 });
 $('#jFilter').addEventListener('click', (e) => { const b = e.target.closest('button[data-f]'); if (!b) return; J.filter = b.dataset.f; J.shown = 60; renderJournal(); });
 $('#jSearch').addEventListener('input', (e) => { J.q = e.target.value; J.shown = 60; renderJournal(); });

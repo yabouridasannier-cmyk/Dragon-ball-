@@ -8,7 +8,7 @@ const uid = () => Date.now().toString(36) + '-' + Math.random().toString(36).sli
 export const STATUSES = ['pending', 'won', 'lost', 'void'];
 const valid = (e) => e && typeof e.id === 'string' && /^[A-Za-z0-9_.~:@+-]{1,120}$/.test(e.id) && Number.isFinite(e.ts) && Number.isInteger(e.cardId)
   && typeof e.playerId === 'string' && STATUSES.includes(e.status);
-const clean = (e) => ({ id: e.id, ts: e.ts, session: e.session ?? e.ts, playerId: e.playerId, cardId: e.cardId, from: e.from ?? null, status: e.status, upd: e.upd ?? e.ts, ...(e.note ? { note: String(e.note).slice(0, 200) } : {}) });
+const clean = (e) => ({ id: e.id, ts: e.ts, session: e.session ?? e.ts, playerId: e.playerId, cardId: e.cardId, from: e.from ?? null, status: e.status, upd: e.upd ?? e.ts, ...(e.kind === 'manual' ? { kind: 'manual' } : {}), ...(e.note ? { note: String(e.note).slice(0, 200) } : {}) });
 
 export function createJournal({ cards, store, claudeApi, asOf = 0 }) {
   const origin = new Map(cards.map((c) => [c.id, c.owner]));
@@ -56,7 +56,7 @@ export function createJournal({ cards, store, claudeApi, asOf = 0 }) {
     const last = sorted(-1)[0];
     return last && Date.now() - last.ts <= GAP ? last.session : null;
   }
-  const current = () => { const s = currentSession(); return s == null ? [] : sorted(-1).filter((e) => e.session === s && e.status !== 'void' && !archived(e)); };
+  const current = () => { const s = currentSession(); return s == null ? [] : sorted(-1).filter((e) => e.session === s && e.status !== 'void' && !archived(e) && e.kind !== 'manual'); } // la barre du bas = invocations seulement;
 
   // ── Écriture ───────────────────────────────────────────────────────────────────────────────
   function touchSession(ts) {
@@ -69,9 +69,15 @@ export function createJournal({ cards, store, claudeApi, asOf = 0 }) {
     log.set(e.id, e); saveLocal(); pushRemote(e);
     if (notify) emit();
   }
-  function add({ cardId, playerId, status = 'pending', ts = Date.now(), from, note }) {
-    const e = clean({ id: uid(), ts, session: touchSession(ts), playerId, cardId, from: from ?? ownerMap().get(cardId), status, upd: Date.now(), note });
+  function add({ cardId, playerId, status = 'pending', ts = Date.now(), from, note, kind }) {
+    const e = clean({ id: uid(), ts, session: touchSession(ts), playerId, cardId, from: from ?? ownerMap().get(cardId), status, upd: Date.now(), note, kind });
     put(e); return e;
+  }
+  // Tri manuel : « cette carte va à ce joueur », sans tirage ni combat. S'écrit dans le journal (kind: manual) et se défait comme le reste.
+  function transfer(cardId, playerId, note = 'tri manuel') {
+    const cur = ownerMap().get(cardId);
+    if (!origin.has(cardId) || cur === playerId) return null;
+    return add({ cardId, playerId, status: 'won', kind: 'manual', from: cur, note });
   }
   function setStatus(id, status) {
     const e = log.get(id); if (!e || !STATUSES.includes(status) || e.status === status) return e;
@@ -141,7 +147,7 @@ export function createJournal({ cards, store, claudeApi, asOf = 0 }) {
   connect();
 
   return {
-    add, setStatus, newSession, voidAll, exportJSON, importJSON,
+    add, transfer, setStatus, newSession, voidAll, exportJSON, importJSON,
     entries: sorted, current, ownerMap, pendingIds, pendingCount, currentSession,
     originOf: (id) => origin.get(id), isArchived: archived, info: () => ({ ...info, count: log.size, asOf }),
     onChange: (fn) => { listeners.add(fn); return () => listeners.delete(fn); },

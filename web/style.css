@@ -284,3 +284,17 @@ body.jopen #toast { bottom: auto; top: 14px; translate: -50% -20px; } body.jopen
   #histHint { display: none; } #balls { --bs: clamp(26px, 6vh, 40px); height: calc(var(--bs) + 16px); } #go .orb { width: 56px; height: 56px; } #go .lbl { font-size: .9rem; }
 }
 .jr.s-archived { opacity: .6; } .jarch { font-size: .75rem; color: var(--ink-dim); padding: 4px 10px; border: 1px dashed rgba(255, 255, 255, .25); border-radius: 999px; white-space: nowrap; }
+.jtabs { display: flex; gap: 6px; } .jtabs button { flex: 1; padding: 8px 10px; border-radius: 12px; border: 1.5px solid rgba(255, 255, 255, .22); font-weight: 600; font-size: .92rem; }
+.jtabs button[aria-selected="true"] { background: var(--gold-300); color: #221400; border-color: var(--gold-300); }
+.jpane { display: flex; flex-direction: column; gap: 10px; flex: 1 1 auto; min-height: 0; }
+.jhelp { font-size: .82rem; color: var(--ink-dim); line-height: 1.35; }
+.seg button[data-o][aria-pressed="true"] { background: var(--c, var(--gold-300)); color: #101010; border-color: var(--c, var(--gold-300)); }
+.sgive button { padding: 6px 12px; border-radius: 999px; border: 2px solid var(--c); font-size: .82rem; font-weight: 700; color: var(--c); background: transparent; }
+.sgive button:hover:not(:disabled) { background: color-mix(in srgb, var(--c) 28%, transparent); }
+.sgive button[aria-pressed="true"] { background: var(--c); color: #101010; opacity: 1; }
+.sgive button:disabled { cursor: default; opacity: .45; } .sgive button[aria-pressed="true"]:disabled { opacity: 1; }
+.jr.srow .jm em { color: #FFD24A; font-style: normal; }
+.jman { font-size: .75rem; color: #FFD24A; padding: 4px 10px; border: 1px dashed #FFD24A88; border-radius: 999px; white-space: nowrap; }
+@media (max-width: 520px) { .sgive { flex-wrap: wrap; justify-content: flex-end; } }
+.jst.sgive button { width: auto; height: auto; min-width: 0; line-height: 1.2; padding: 7px 13px; opacity: 1; flex: none; }
+.jst.sgive { gap: 6px; }

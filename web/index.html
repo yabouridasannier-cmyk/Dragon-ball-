@@ -86,12 +86,18 @@
   <div class="sheet">
     <div class="jhead"><h2 id="jTitle">📜 Journal des combats</h2><button id="jClose" class="x" aria-label="Fermer">✕</button></div>
     <div id="jDecks" class="jdecks"></div>
+    <div class="jtabs" role="tablist" aria-label="Journal">
+      <button type="button" role="tab" data-tab="combats" aria-selected="true">📜 Combats</button>
+      <button type="button" role="tab" data-tab="tri" aria-selected="false">✋ Tri manuel</button>
+    </div>
+    <div id="jPaneCombats" class="jpane">
     <div class="jtools">
       <div id="jFilter" class="seg" role="group" aria-label="Filtrer par résultat">
         <button type="button" data-f="all" aria-pressed="true">Tous <i></i></button>
         <button type="button" data-f="pending" aria-pressed="false">⚔ À jouer <i></i></button>
         <button type="button" data-f="won" aria-pressed="false">✔ Gagnés <i></i></button>
         <button type="button" data-f="lost" aria-pressed="false">✘ Perdus <i></i></button>
+        <button type="button" data-f="manual" aria-pressed="false">✋ Manuels <i></i></button>
         <button type="button" data-f="void" aria-pressed="false">∅ Annulés <i></i></button>
       </div>
       <input id="jSearch" type="search" placeholder="Chercher une carte…" aria-label="Chercher une carte" autocomplete="off">
@@ -108,6 +114,15 @@
         <p id="jAddMsg" aria-live="polite"></p>
       </div>
     </details>
+    </div>
+    <div id="jPaneTri" class="jpane" hidden>
+      <p class="jhelp">Cherche une carte, puis touche le joueur à qui elle va. Le deck change tout de suite et ça s'écrit dans le journal (✋). Tu peux annuler dans l'onglet Combats.</p>
+      <div class="jtools">
+        <div id="sOwner" class="seg" role="group" aria-label="Filtrer par propriétaire actuel"></div>
+        <input id="sSearch" type="search" placeholder="Chercher une carte (ex. Super Boo)…" aria-label="Chercher une carte" autocomplete="off">
+      </div>
+      <div id="sList" class="jlist"></div>
+    </div>
     <div id="jIO" hidden><textarea id="jText" rows="5" spellcheck="false" aria-label="Sauvegarde du journal"></textarea><button id="jApply" type="button" class="pill">Restaurer</button></div>
     <div class="jfoot">
       <button id="jNewSession" type="button" class="pill">Nouvelle session</button>
