@@ -10,7 +10,7 @@ const lerp = (a, b, t) => a + (b - a) * t;
 const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
-  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* stockage indisponible */ } },
+  set(k, v) { try { const t = JSON.stringify(v); localStorage.setItem(k, t); return localStorage.getItem(k) === t; } catch { return false; } }, // vrai seulement si c'est bien écrit (relu)
 };
 const vibrate = (p) => { try { navigator.vibrate && !settings.calm && navigator.vibrate(p); } catch { /* ignore */ } };
 
@@ -483,8 +483,12 @@ function renderJournal() {
   else if (rows.length > J.shown) html += `<button type="button" id="jMore" class="pill">Voir plus (${rows.length - J.shown})</button>`;
   jList.innerHTML = html;
   const info = journal.info();
-  jMode.textContent = info.mode === 'cloud' ? '☁ Sauvegardé en ligne et dans ce navigateur' : info.mode === 'cloud-read' ? '☁ En ligne en lecture seule · sauvegardé dans ce navigateur' : info.storage ? '💾 Sauvegardé dans ce navigateur seulement' : '⚠ Ce navigateur ne garde rien : copie la sauvegarde';
-  jMode.dataset.m = info.mode === 'local' && !info.storage ? 'warn' : info.mode;
+  const when = info.savedAt ? ` · dernière sauvegarde ${new Date(info.savedAt).toLocaleTimeString('fr-FR')}` : '';
+  const lock = info.persistent ? ' 🔒' : '';
+  jMode.textContent = !info.saveOk || !info.storage ? '⚠ Ce navigateur ne garde rien : copie la sauvegarde'
+    : info.mode === 'cloud' ? `☁ Sauvegardé en ligne et dans ce navigateur${when}` : info.mode === 'cloud-read' ? `☁ En ligne en lecture seule · sauvegardé dans ce navigateur${when}`
+    : `💾 Sauvegardé dans ce navigateur (${info.count} ligne${info.count > 1 ? 's' : ''})${when}${lock}`;
+  jMode.dataset.m = !info.saveOk || !info.storage ? 'warn' : info.mode;
   if (J.tab === 'tri') renderSorter();
 }
 const pvOf = (c) => +String(c.hp || 0).replace(/[\s\u00a0]/g, '') || 0;
@@ -567,9 +571,13 @@ $('#jApply').addEventListener('click', () => {
   try { const r = journal.importJSON(jText.value); toast(`Sauvegarde restaurée : ${r.added} ajouté${r.added > 1 ? 's' : ''}, ${r.updated} mis à jour${r.bad ? `, ${r.bad} ignoré${r.bad > 1 ? 's' : ''}` : ''}`); jIO.hidden = true; }
   catch (err) { toast(err.message); }
 });
+// Sauvegarde : si le navigateur n'arrive pas à écrire, on le dit tout de suite et en grand (jamais en silence)
+const saveWarn = $('#saveWarn');
+function checkSaving() { const i = journal.info(); saveWarn.hidden = i.saveOk && i.storage; }
+$('#saveWarnBtn').addEventListener('click', () => { openJournal(); });
 // Tout changement du journal (ici, ou venu d'un autre appareil) met à jour decks, tirage, barre et fenêtre
 journal.onChange(() => {
-  applyOwners(); history = journal.current(); renderHistory(); refreshPool(); renderJournal();
+  checkSaving(); applyOwners(); history = journal.current(); renderHistory(); refreshPool(); renderJournal();
   if (state === 'idle') for (const [k, el] of live) if (idle[k]) el.style.setProperty('--oc', colorOf(idle[k].owner));
 });
 
@@ -821,6 +829,7 @@ function boot() {
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (state === 'idle') layout(); });
   idle = makeIdle(CARDS);
   countEl.textContent = CARDS.length; $('.count small').textContent = `/ ${CARDS.length} cartes en jeu`;
+  checkSaving(); if (journal.info().recovered) toast('Journal restauré depuis la copie de secours : rien n’est perdu');
   if (demo) $('#demo').hidden = false;
   const pend = store.get('iz.pending', null);
   if (pend && byId.has(pend.cardId)) { // tirage interrompu : le résultat était déjà enregistré, on ne retire pas

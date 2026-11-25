@@ -311,3 +311,7 @@ body.pausebg #stars, body.pausebg #go .orb, body.pausebg .ball, body.pausebg #ma
 }
 @media (max-width: 520px) and (max-height: 640px) { #journal { padding: 0; } #journal .sheet { max-height: 100vh; max-height: 100dvh; } }
 @media (max-height: 420px) { .jdecks { display: none; } #journal .sheet { gap: 4px; } .jhead h2 { font-size: 1rem; } }
+
+/* Alerte de sauvegarde : au-dessus de tout, impossible à manquer */
+#saveWarn { position: fixed; left: 8px; right: 8px; top: calc(8px + env(safe-area-inset-top)); z-index: 95; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center; padding: 10px 14px; border-radius: 14px; background: #7a0f18; color: #fff; border: 2px solid #FF8A93; font-size: .9rem; font-weight: 700; text-align: center; box-shadow: 0 6px 24px #000a; }
+#saveWarn button { padding: 6px 12px; border-radius: 999px; background: #fff; color: #7a0f18; font-weight: 700; font-size: .85rem; }

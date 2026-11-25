@@ -2,6 +2,8 @@
 // Les decks ne sont pas stockés : ils se déduisent du journal (propriétaire d'origine + dernier combat gagné de chaque carte).
 // Rien n'est jamais supprimé : « annuler » marque l'entrée « void », on peut la rétablir.
 // Sauvegarde : navigateur (localStorage) + base en ligne de l'artefact quand elle est disponible (window.claude.use('db')).
+// Chaque modification est écrite immédiatement, relue pour vérification, doublée dans une copie de secours, fusionnée avec ce qu'un autre onglet a pu écrire,
+// et le navigateur est prié de ne jamais effacer ces données (stockage persistant). Un échec d'écriture n'est jamais silencieux (info().saveOk).
 
 const GAP = 4 * 3600 * 1000; // plus de 4 h sans tirage : nouvelle session
 const uid = () => Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7); // segment de chemin valide
@@ -15,17 +17,44 @@ export function createJournal({ cards, store, claudeApi, asOf = 0 }) {
   const archived = (e) => e.ts <= asOf; // déjà pris en compte dans le document de référence : plus aucun effet sur les decks
   const log = new Map();
   const listeners = new Set();
-  const info = { mode: 'local', storage: true, remoteCount: 0, error: '' }; // mode : local | cloud | cloud-read
+  const LOG = 'iz.log', BAK = 'iz.log.bak'; // journal + copie de secours (même contenu, autre clé)
+  const info = { mode: 'local', storage: true, remoteCount: 0, error: '', saveOk: true, savedAt: 0, persistent: null, recovered: false }; // mode : local | cloud | cloud-read
   let session = store.get('iz.session', null);
 
   const emit = () => listeners.forEach((fn) => { try { fn(); } catch (e) { console.error(e); } });
-  const saveLocal = () => { store.set('iz.log', [...log.values()]); };
+  const parseList = (raw) => (Array.isArray(raw) ? raw.filter(valid).map(clean) : []);
+  function mergeStored() { // reprend ce qu'un autre onglet a écrit : pour chaque ligne, la version la plus récente gagne (rien n'est jamais supprimé)
+    let changed = false;
+    for (const e of [...parseList(store.get(LOG, null)), ...parseList(store.get(BAK, null))]) { const cur = log.get(e.id); if (!cur || e.upd > cur.upd) { log.set(e.id, e); changed = true; } }
+    return changed;
+  }
+  let askedPersist = false;
+  function askPersist() { // demande au navigateur de ne pas effacer ces données quand il manque de place
+    if (askedPersist) return; askedPersist = true;
+    try {
+      if (!navigator.storage || !navigator.storage.persist) return;
+      navigator.storage.persisted().then((p) => (p ? true : navigator.storage.persist())).then((g) => { info.persistent = !!g; emit(); }).catch(() => {});
+    } catch { /* ignore */ }
+  }
+  function saveLocal() {
+    mergeStored();
+    const list = [...log.values()];
+    const ok = store.set(LOG, list) !== false && store.set(BAK, list) !== false; // écrit, relit, puis double
+    info.saveOk = ok; if (ok) { info.savedAt = Date.now(); askPersist(); }
+    return ok;
+  }
   try { localStorage.setItem('iz.probe', '1'); info.storage = localStorage.getItem('iz.probe') === '1'; } catch { info.storage = false; }
 
   // ── Chargement et migration des versions précédentes (iz.history + iz.owners) ───────────────
   (function load() {
-    const saved = store.get('iz.log', null);
-    if (Array.isArray(saved)) { saved.filter(valid).forEach((e) => log.set(e.id, clean(e))); return; }
+    const saved = store.get(LOG, null), bak = parseList(store.get(BAK, null));
+    if (Array.isArray(saved) || bak.length) {
+      parseList(saved).forEach((e) => log.set(e.id, e));
+      let healed = !Array.isArray(saved); // journal principal illisible ou absent : on repart de la copie de secours
+      for (const e of bak) { const cur = log.get(e.id); if (!cur || e.upd > cur.upd) { log.set(e.id, e); healed = true; } }
+      if (healed && log.size) { info.recovered = true; saveLocal(); }
+      return;
+    }
     const old = store.get('iz.history', []), owners = store.get('iz.owners', {});
     let sess = 0, prev = 0;
     [...old].filter((h) => h && Number.isFinite(h.ts) && origin.has(h.cardId)).sort((a, b) => a.ts - b.ts).forEach((h, i) => {
@@ -145,6 +174,7 @@ export function createJournal({ cards, store, claudeApi, asOf = 0 }) {
     } catch { /* base indisponible : on reste en local */ }
   }
   connect();
+  try { addEventListener('storage', (ev) => { if ((ev.key === LOG || ev.key === BAK || ev.key === null) && mergeStored()) emit(); }); } catch { /* ignore */ } // un autre onglet a écrit
 
   return {
     add, transfer, setStatus, newSession, voidAll, exportJSON, importJSON,
